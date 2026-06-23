@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HUID Smart Camera Pro</title>
+    <!-- PeerJS WebRTC Library -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f3f4f6; --text: #1f2937; --success: #10b981; --danger: #ef4444; --warning: #f59e0b;}
+        body { font-family: system-ui, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: var(--text); }
+        .container { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 420px; margin: 0 auto; text-align: center; }
+        h2 { color: var(--primary); margin-top: 0; font-size: 20px; }
+        
+        /* Screens */
+        #connectScreen, #modeScreen, #cameraScreen { display: none; }
+        #connectScreen { display: block; } /* Default screen */
+        
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #bfdbfe; border-radius: 8px; font-size: 16px; text-align: center; font-weight: bold; box-sizing: border-box; }
+        .btn { color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; box-sizing: border-box;}
+        .btn-primary { background: var(--primary); }
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); }
+        .btn-warning { background: var(--warning); color: black;}
+        
+        /* Mode Screen */
+        .mode-box { border: 2px dashed #9ca3af; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .sync-info { font-size: 13px; color: var(--success); font-weight: bold; margin-bottom: 15px; }
+        
+        /* Camera Screen */
+        .header-bar { display: flex; justify-content: space-between; background: #1e3a8a; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; margin-bottom: 10px;}
+        .tag-info { background: #eff6ff; padding: 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; color: #1e40af; border: 1px solid #bfdbfe; font-size: 18px;}
+        .sub-info { font-size: 12px; color: #6b7280; display: block; margin-top: 4px; }
+        
+        #videoElement, #previewImage { width: 100%; height: 300px; object-fit: cover; border-radius: 8px; background: #000; margin-bottom: 10px; }
+        #videoElement { transform: scaleX(1); } /* Rear camera mirror fix */
+        
+        .action-row { display: flex; gap: 10px; }
+        .action-row .btn { margin-bottom: 0; }
+        
+        #statusMsg { font-size: 14px; margin-top: 10px; font-weight: bold; color: #4b5563; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📸 HUID Auto-Sync Camera</h2>
+
+    <!-- Screen 1: Connect to PC -->
+    <div id="connectScreen">
+        <p style="font-size: 14px; color: #6b7280;">PC me extension kholiye aur wahan likha ID yahan dalein:</p>
+        <input type="text" id="pcIdInput" placeholder="Enter PC ID (e.g. SHOP-123)">
+        <button class="btn btn-primary" onclick="connectToPC()">🔗 Connect to PC</button>
+        <button class="btn btn-warning" onclick="loadDemoData()" style="margin-top: 20px;">🛠️ Test With Demo Data</button>
+        <div id="statusMsg">Waiting to connect...</div>
+    </div>
+
+    <!-- Screen 2: Select Photo Mode -->
+    <div id="modeScreen">
+        <div class="sync-info">✅ PC se Data Sync ho gaya (<span id="totalTagsCount">0</span> Tags)</div>
+        <div class="mode-box">
+            <p style="margin-top: 0; font-weight: bold;">Kaunsi photo click karni hai?</p>
+            <button class="btn btn-primary" onclick="startCameraMode('ARTICLE')">📸 1. Article Photos</button>
+            <button class="btn btn-warning" onclick="startCameraMode('HUID')">🔍 2. HUID Photos</button>
+        </div>
+        <button class="btn btn-danger" onclick="disconnect()">❌ Disconnect</button>
+    </div>
+
+    <!-- Screen 3: Smart Camera Loop -->
+    <div id="cameraScreen">
+        <div class="header-bar">
+            <span id="modeDisplay">ARTICLE MODE</span>
+            <span id="progressDisplay">1 / 50</span>
+        </div>
+        
+        <div class="tag-info">
+            Tag: <span id="currentTag" style="color: #ef4444; font-size: 22px;">JHUMKI1</span>
+            <span class="sub-info">Job Card: <span id="currentJob">126574672</span> | Req: <span id="currentReq">118007685</span></span>
+        </div>
+        
+        <!-- Camera / Preview -->
+        <video id="videoElement" autoplay playsinline></video>
+        <img id="previewImage" style="display: none;">
+        
+        <!-- Controls: Capture State -->
+        <div id="captureControls">
+            <button class="btn btn-success" style="font-size: 20px; padding: 20px;" onclick="capturePhoto()">📸 Click Photo</button>
+        </div>
+        
+        <!-- Controls: Action State (After click) -->
+        <div id="actionControls" class="action-row" style="display: none;">
+            <button class="btn btn-danger" onclick="retakePhoto()">🔄 Retake</button>
+            <button class="btn btn-primary" onclick="nextTag()">⏭️ Next Tag</button>
+        </div>
+        
+        <button class="btn" style="background: #9ca3af; margin-top: 15px;" onclick="goBackToMode()">🔙 Back to Menu</button>
+    </div>
+    
+    <canvas id="canvas" style="display: none;"></canvas>
+</div>
+
+<script>
+    let peer = null;
+    let conn = null;
+    let cameraStream = null;
+    
+    // Workflow Variables
+    let tagsList = []; // PC se aayi hui list yahan save hogi
+    let currentIndex = 0;
+    let currentPhotoMode = 'ARTICLE'; // ARTICLE ya HUID
+    let currentImageData = null;
+
+    // -----------------------------------------
+    // 1. CONNECTION & DATA SYNC
+    // -----------------------------------------
+    function connectToPC() {
+        const pcId = document.getElementById('pcIdInput').value.trim();
+        const status = document.getElementById('statusMsg');
+        if(!pcId) { alert("Please enter PC ID!"); return; }
+        
+        status.innerText = "⏳ Connecting...";
+        status.style.color = "#d97706";
+        peer = new Peer(); 
+
+        peer.on('open', function(id) {
+            conn = peer.connect(pcId);
+            
+            conn.on('open', function() {
+                status.innerText = "✅ Connected to PC! Waiting for list...";
+                status.style.color = "green";
+            });
+
+            // Listen for Queue Data from PC
+            conn.on('data', function(data) {
+                if(data.type === 'SYNC_LIST') {
+                    // PC ne data bhej diya
+                    tagsList = data.items;
+                    document.getElementById('totalTagsCount').innerText = tagsList.length;
+                    showScreen('modeScreen');
+                }
+            });
+
+            conn.on('error', function(err) {
+                status.innerText = "❌ Connection Failed!";
+                status.style.color = "red";
+            });
+        });
+    }
+
+    // 🛠️ DEMO MODE (For testing without PC)
+    function loadDemoData() {
+        tagsList = [
+            { reqId: '118007685', jobId: '126574672', tagId: 'JHUMKI1' },
+            { reqId: '118007685', jobId: '126574672', tagId: 'JHUMKI2' },
+            { reqId: '118007685', jobId: '126574672', tagId: 'JHUMKI3' }
+        ];
+        document.getElementById('totalTagsCount').innerText = tagsList.length;
+        showScreen('modeScreen');
+    }
+
+    // -----------------------------------------
+    // 2. CAMERA & WORKFLOW LOGIC
+    // -----------------------------------------
+    async function startCameraMode(mode) {
+        if(tagsList.length === 0) { alert("List khali hai!"); return; }
+        
+        currentPhotoMode = mode;
+        currentIndex = 0; // Start from first tag
+        
+        showScreen('cameraScreen');
+        await initCamera();
+        updateUIForCurrentTag();
+    }
+
+    async function initCamera() {
+        const video = document.getElementById('videoElement');
+        try {
+            if(cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+            cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
+            });
+            video.srcObject = cameraStream;
+            
+            // Reset UI
+            video.style.display = 'block';
+            document.getElementById('previewImage').style.display = 'none';
+            document.getElementById('captureControls').style.display = 'block';
+            document.getElementById('actionControls').style.display = 'none';
+        } catch (err) {
+            alert("Camera error: " + err.message);
+        }
+    }
+
+    function updateUIForCurrentTag() {
+        if (currentIndex >= tagsList.length) {
+            alert(`🎉 Congratulations! Saari ${currentPhotoMode} photos complete ho gayi hain.`);
+            goBackToMode();
+            return;
+        }
+
+        let item = tagsList[currentIndex];
+        document.getElementById('modeDisplay').innerText = currentPhotoMode + " MODE";
+        document.getElementById('progressDisplay').innerText = `${currentIndex + 1} / ${tagsList.length}`;
+        
+        document.getElementById('currentTag').innerText = item.tagId;
+        document.getElementById('currentJob').innerText = item.jobId;
+        document.getElementById('currentReq').innerText = item.reqId;
+        
+        // Ensure camera is active
+        document.getElementById('videoElement').style.display = 'block';
+        document.getElementById('previewImage').style.display = 'none';
+        document.getElementById('captureControls').style.display = 'block';
+        document.getElementById('actionControls').style.display = 'none';
+    }
+
+    function capturePhoto() {
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        currentImageData = canvas.toDataURL('image/jpeg', 0.8);
+
+        // Show Preview
+        const preview = document.getElementById('previewImage');
+        preview.src = currentImageData;
+        preview.style.display = 'block';
+        video.style.display = 'none';
+
+        // Toggle Buttons
+        document.getElementById('captureControls').style.display = 'none';
+        document.getElementById('actionControls').style.display = 'flex';
+        
+        // 🚀 Auto-Send to PC in background (Saves time)
+        sendToPC(currentImageData);
+    }
+
+    function retakePhoto() {
+        let confirmRetake = confirm("Kya aap purani photo replace karna chahte hain? \n\n(Nayi photo click karni padegi)");
+        if (confirmRetake) {
+            // Wapas camera khol do
+            document.getElementById('videoElement').style.display = 'block';
+            document.getElementById('previewImage').style.display = 'none';
+            document.getElementById('captureControls').style.display = 'block';
+            document.getElementById('actionControls').style.display = 'none';
+            currentImageData = null;
+        }
+    }
+
+    function nextTag() {
+        // Agle tag par jao
+        currentIndex++;
+        updateUIForCurrentTag();
+    }
+
+    function sendToPC(imgData) {
+        let item = tagsList[currentIndex];
+        if (conn && conn.open) {
+            conn.send({
+                type: 'PHOTO_UPLOAD',
+                reqId: item.reqId,
+                jobId: item.jobId,
+                tagId: item.tagId,
+                photoType: currentPhotoMode,
+                image: imgData
+            });
+        } else {
+            console.log("Demo Mode: Photo 'sent' to PC conceptually.");
+        }
+    }
+
+    // -----------------------------------------
+    // 3. NAVIGATION HELPERS
+    // -----------------------------------------
+    function showScreen(screenId) {
+        document.getElementById('connectScreen').style.display = 'none';
+        document.getElementById('modeScreen').style.display = 'none';
+        document.getElementById('cameraScreen').style.display = 'none';
+        document.getElementById(screenId).style.display = 'block';
+    }
+
+    function goBackToMode() {
+        if(cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+        showScreen('modeScreen');
+    }
+
+    function disconnect() {
+        if(cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+        if(peer) peer.destroy();
+        location.reload();
+    }
+</script>
+
+</body>
+</html>
