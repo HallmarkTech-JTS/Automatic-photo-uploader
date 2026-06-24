@@ -1,45 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="manifest" href="app-manifest.json">
+    <meta name="theme-color" content="#1e3a8a">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>HUID Native Camera Pro</title>
-    <!-- PeerJS WebRTC Library -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f3f4f6; --text: #1f2937; --success: #10b981; --danger: #ef4444; --warning: #f59e0b;}
         body { font-family: system-ui, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: var(--text); }
         .container { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 420px; margin: 0 auto; text-align: center; }
         h2 { color: var(--primary); margin-top: 0; font-size: 20px; }
-        
         #connectScreen, #modeScreen, #cameraScreen { display: none; }
         #connectScreen { display: block; } 
-        
         input[type="text"] { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #bfdbfe; border-radius: 8px; font-size: 16px; text-align: center; font-weight: bold; box-sizing: border-box; }
         .btn { color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px;}
         .btn-primary { background: var(--primary); }
         .btn-success { background: var(--success); }
         .btn-danger { background: var(--danger); }
         .btn-warning { background: var(--warning); color: black;}
-        
         .mode-box { border: 2px dashed #9ca3af; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
         .sync-info { font-size: 13px; color: var(--success); font-weight: bold; margin-bottom: 15px; }
-        
         .header-bar { display: flex; justify-content: space-between; background: #1e3a8a; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; margin-bottom: 10px;}
         .tag-info { background: #eff6ff; padding: 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; color: #1e40af; border: 1px solid #bfdbfe; font-size: 18px;}
         .sub-info { font-size: 12px; color: #6b7280; display: block; margin-top: 4px; }
-        
-        /* Preview Image Styling */
         #previewImage { width: 100%; height: 350px; object-fit: contain; border-radius: 8px; background: #f3f4f6; margin-bottom: 15px; border: 2px solid #e5e7eb; display: none;}
-        
         .action-row { display: flex; gap: 10px; }
         .action-row .btn { margin-bottom: 0; }
-        
         #statusMsg { font-size: 14px; margin-top: 10px; font-weight: bold; color: #4b5563; }
-        
-        /* Hide default file input */
         #nativeCameraInput { display: none; }
-        
         .placeholder-box { width: 100%; height: 200px; border: 2px dashed #d1d5db; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-weight: bold; margin-bottom: 15px; font-size: 14px;}
     </style>
 </head>
@@ -50,7 +41,7 @@
 
     <div id="connectScreen">
         <p style="font-size: 14px; color: #6b7280;">PC me extension kholiye aur wahan likha ID yahan dalein:</p>
-        <input type="text" id="pcIdInput" placeholder="Enter PC ID (e.g. SHOP-123)">
+        <input type="text" id="pcIdInput" placeholder="Enter PC ID">
         <button class="btn btn-primary" onclick="connectToPC()">🔗 Connect to PC</button>
         <div id="statusMsg">Waiting to connect...</div>
     </div>
@@ -70,18 +61,14 @@
             <span id="modeDisplay">ARTICLE MODE</span>
             <span id="progressDisplay">1 / 50</span>
         </div>
-        
         <div class="tag-info">
             Tag: <span id="currentTag" style="color: #ef4444; font-size: 22px;">JHUMKI1</span>
             <span class="sub-info">Job Card: <span id="currentJob">126574672</span></span>
         </div>
         
-        <!-- Native Camera Trigger -->
         <input type="file" id="nativeCameraInput" accept="image/*" capture="environment">
         
-        <div id="placeholderBox" class="placeholder-box">
-            Photo yahan dikhegi
-        </div>
+        <div id="placeholderBox" class="placeholder-box">Photo yahan dikhegi</div>
         <img id="previewImage" src="">
         
         <div id="captureControls">
@@ -105,20 +92,28 @@
     let currentPhotoMode = 'ARTICLE'; 
     let currentImageData = null;
 
+    // 🚀 PM Feature: Persistent Mobile ID
+    window.onload = function() {
+        let savedId = localStorage.getItem('last_pc_id');
+        if(savedId) document.getElementById('pcIdInput').value = savedId;
+    }
+
     function connectToPC() {
         const pcId = document.getElementById('pcIdInput').value.trim().toUpperCase();
         const status = document.getElementById('statusMsg');
         if(!pcId) { alert("Please enter PC ID!"); return; }
         
+        // Save for next time
+        localStorage.setItem('last_pc_id', pcId);
+
         status.innerText = "⏳ Connecting...";
         status.style.color = "#d97706";
         peer = new Peer(); 
 
         peer.on('open', function(id) {
             conn = peer.connect(pcId);
-            
             conn.on('open', function() {
-                status.innerText = "✅ Connected to PC! Waiting for list...";
+                status.innerText = "✅ Connected to PC!";
                 status.style.color = "green";
             });
 
@@ -139,11 +134,7 @@
                     }
                 }
             });
-
-            conn.on('error', function(err) {
-                status.innerText = "❌ Connection Failed!";
-                status.style.color = "red";
-            });
+            conn.on('error', function() { status.innerText = "❌ Connection Failed!"; status.style.color = "red"; });
         });
     }
 
@@ -172,7 +163,6 @@
         document.getElementById('placeholderBox').style.display = 'flex';
         document.getElementById('captureControls').style.display = 'block';
         document.getElementById('actionControls').style.display = 'none';
-        
         document.getElementById('nativeCameraInput').value = "";
     }
 
@@ -180,7 +170,6 @@
         document.getElementById('nativeCameraInput').click();
     }
 
-    // High Quality Image Processing 
     document.getElementById('nativeCameraInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -190,40 +179,23 @@
             const img = new Image();
             img.onload = function() {
                 const canvas = document.createElement('canvas');
-                
-                // Allow Full HD (1920x1920) limits for excellent clarity
-                const MAX_WIDTH = 1920;
-                const MAX_HEIGHT = 1920;
-                let width = img.width;
-                let height = img.height;
+                const MAX_WIDTH = 1920; const MAX_HEIGHT = 1920;
+                let width = img.width; let height = img.height;
 
-                // Scale down ONLY if image is bigger than 1920px (prevents app crash)
                 if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
+                    if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                 } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
-                    }
+                    if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
                 }
 
-                canvas.width = width;
-                canvas.height = height;
+                canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
-
-                // High Quality Setting (90%) - File size will be roughly 1 to 2.5 MB
                 currentImageData = canvas.toDataURL('image/jpeg', 0.90);
 
-                // Show Preview
                 document.getElementById('previewImage').src = currentImageData;
                 document.getElementById('previewImage').style.display = 'block';
                 document.getElementById('placeholderBox').style.display = 'none';
-
-                // Change Buttons
                 document.getElementById('captureControls').style.display = 'none';
                 document.getElementById('actionControls').style.display = 'flex';
                 
@@ -234,26 +206,13 @@
         reader.readAsDataURL(file);
     });
 
-    function retakePhoto() {
-        openNativeCamera();
-    }
-
-    function nextTag() {
-        currentIndex++;
-        updateUIForCurrentTag();
-    }
+    function retakePhoto() { openNativeCamera(); }
+    function nextTag() { currentIndex++; updateUIForCurrentTag(); }
 
     function sendToPC(imgData) {
         let item = tagsList[currentIndex];
         if (conn && conn.open) {
-            conn.send({
-                type: 'PHOTO_UPLOAD',
-                reqId: item.reqId,
-                jobId: item.jobId,
-                tagId: item.tagId,
-                photoType: currentPhotoMode,
-                image: imgData
-            });
+            conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: imgData });
         }
     }
 
@@ -264,15 +223,33 @@
         document.getElementById(screenId).style.display = 'block';
     }
 
-    function goBackToMode() {
-        showScreen('modeScreen');
-    }
-
-    function disconnect() {
-        if(peer) peer.destroy();
-        location.reload();
+    function goBackToMode() { showScreen('modeScreen'); }
+    function disconnect() { if(peer) peer.destroy(); location.reload(); }
+</script>
+<script>
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./service-worker.js')
+                .then((registration) => {
+                    console.log('Service Worker Registered with scope:', registration.scope);
+                    
+                    // Agar naya update aata hai toh page ko apne aap refresh kar dega
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                console.log('New update available! Refreshing to apply changes...');
+                                window.location.reload();
+                            }
+                        });
+                    });
+                })
+                .catch((error) => {
+                    console.log('Service Worker registration failed:', error);
+                });
+        });
     }
 </script>
-
 </body>
 </html>
