@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>HUID Smart Camera Pro</title>
-    <!-- PeerJS WebRTC Library -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f3f4f6; --text: #1f2937; --success: #10b981; --danger: #ef4444; --warning: #f59e0b;}
@@ -12,9 +11,8 @@
         .container { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 420px; margin: 0 auto; text-align: center; }
         h2 { color: var(--primary); margin-top: 0; font-size: 20px; }
         
-        /* Screens */
         #connectScreen, #modeScreen, #cameraScreen { display: none; }
-        #connectScreen { display: block; } /* Default screen */
+        #connectScreen { display: block; } 
         
         input { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #bfdbfe; border-radius: 8px; font-size: 16px; text-align: center; font-weight: bold; box-sizing: border-box; }
         .btn { color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; box-sizing: border-box;}
@@ -23,22 +21,21 @@
         .btn-danger { background: var(--danger); }
         .btn-warning { background: var(--warning); color: black;}
         
-        /* Mode Screen */
         .mode-box { border: 2px dashed #9ca3af; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
         .sync-info { font-size: 13px; color: var(--success); font-weight: bold; margin-bottom: 15px; }
         
-        /* Camera Screen */
         .header-bar { display: flex; justify-content: space-between; background: #1e3a8a; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; margin-bottom: 10px;}
         .tag-info { background: #eff6ff; padding: 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; color: #1e40af; border: 1px solid #bfdbfe; font-size: 18px;}
         .sub-info { font-size: 12px; color: #6b7280; display: block; margin-top: 4px; }
         
-        #videoElement, #previewImage { width: 100%; height: 300px; object-fit: cover; border-radius: 8px; background: #000; margin-bottom: 10px; }
-        #videoElement { transform: scaleX(1); } /* Rear camera mirror fix */
+        #videoElement, #previewImage { width: 100%; height: 350px; object-fit: cover; border-radius: 8px; background: #000; margin-bottom: 10px; touch-action: none; }
+        #videoElement { transform: scaleX(1); }
         
         .action-row { display: flex; gap: 10px; }
         .action-row .btn { margin-bottom: 0; }
         
         #statusMsg { font-size: 14px; margin-top: 10px; font-weight: bold; color: #4b5563; }
+        .zoom-hint { font-size: 11px; color: #6b7280; margin-bottom: 10px; display: block; }
     </style>
 </head>
 <body>
@@ -46,16 +43,13 @@
 <div class="container">
     <h2>📸 HUID Auto-Sync Camera</h2>
 
-    <!-- Screen 1: Connect to PC -->
     <div id="connectScreen">
         <p style="font-size: 14px; color: #6b7280;">PC me extension kholiye aur wahan likha ID yahan dalein:</p>
         <input type="text" id="pcIdInput" placeholder="Enter PC ID (e.g. SHOP-123)">
         <button class="btn btn-primary" onclick="connectToPC()">🔗 Connect to PC</button>
-        <button class="btn btn-warning" onclick="loadDemoData()" style="margin-top: 20px;">🛠️ Test With Demo Data</button>
         <div id="statusMsg">Waiting to connect...</div>
     </div>
 
-    <!-- Screen 2: Select Photo Mode -->
     <div id="modeScreen">
         <div class="sync-info">✅ PC se Data Sync ho gaya (<span id="totalTagsCount">0</span> Tags)</div>
         <div class="mode-box">
@@ -66,7 +60,6 @@
         <button class="btn btn-danger" onclick="disconnect()">❌ Disconnect</button>
     </div>
 
-    <!-- Screen 3: Smart Camera Loop -->
     <div id="cameraScreen">
         <div class="header-bar">
             <span id="modeDisplay">ARTICLE MODE</span>
@@ -75,19 +68,18 @@
         
         <div class="tag-info">
             Tag: <span id="currentTag" style="color: #ef4444; font-size: 22px;">JHUMKI1</span>
-            <span class="sub-info">Job Card: <span id="currentJob">126574672</span> | Req: <span id="currentReq">118007685</span></span>
+            <span class="sub-info">Job Card: <span id="currentJob">126574672</span></span>
         </div>
         
-        <!-- Camera / Preview -->
+        <span class="zoom-hint">✌️ Ungli se pinch karke hardware zoom karein</span>
+        
         <video id="videoElement" autoplay playsinline></video>
         <img id="previewImage" style="display: none;">
         
-        <!-- Controls: Capture State -->
         <div id="captureControls">
             <button class="btn btn-success" style="font-size: 20px; padding: 20px;" onclick="capturePhoto()">📸 Click Photo</button>
         </div>
         
-        <!-- Controls: Action State (After click) -->
         <div id="actionControls" class="action-row" style="display: none;">
             <button class="btn btn-danger" onclick="retakePhoto()">🔄 Retake</button>
             <button class="btn btn-primary" onclick="nextTag()">⏭️ Next Tag</button>
@@ -104,17 +96,19 @@
     let conn = null;
     let cameraStream = null;
     
-    // Workflow Variables
-    let tagsList = []; // PC se aayi hui list yahan save hogi
+    let tagsList = []; 
     let currentIndex = 0;
-    let currentPhotoMode = 'ARTICLE'; // ARTICLE ya HUID
+    let currentPhotoMode = 'ARTICLE'; 
     let currentImageData = null;
 
-    // -----------------------------------------
-    // 1. CONNECTION & DATA SYNC
-    // -----------------------------------------
+    let currentZoom = 1;
+    let minZoom = 1;
+    let maxZoom = 3;
+    let initialPinchDistance = null;
+    let videoTrack = null;
+
     function connectToPC() {
-        const pcId = document.getElementById('pcIdInput').value.trim();
+        const pcId = document.getElementById('pcIdInput').value.trim().toUpperCase();
         const status = document.getElementById('statusMsg');
         if(!pcId) { alert("Please enter PC ID!"); return; }
         
@@ -130,13 +124,23 @@
                 status.style.color = "green";
             });
 
-            // Listen for Queue Data from PC
             conn.on('data', function(data) {
                 if(data.type === 'SYNC_LIST') {
-                    // PC ne data bhej diya
                     tagsList = data.items;
                     document.getElementById('totalTagsCount').innerText = tagsList.length;
                     showScreen('modeScreen');
+                } 
+                // 🚀 NAYA: Jab PC se 'Retake' ka signal aayega
+                else if (data.type === 'RETAKE_PHOTO') {
+                    let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId);
+                    if(targetIdx !== -1) {
+                        currentIndex = targetIdx;
+                        currentPhotoMode = data.photoType;
+                        showScreen('cameraScreen');
+                        initCamera();
+                        updateUIForCurrentTag();
+                        alert(`PC se command: Kripya ${data.tagId} (${data.photoType}) ki photo wapas kheinchein!`);
+                    }
                 }
             });
 
@@ -147,26 +151,10 @@
         });
     }
 
-    // 🛠️ DEMO MODE (For testing without PC)
-    function loadDemoData() {
-        tagsList = [
-            { reqId: '118007685', jobId: '126574672', tagId: 'JHUMKI1' },
-            { reqId: '118007685', jobId: '126574672', tagId: 'JHUMKI2' },
-            { reqId: '118007685', jobId: '126574672', tagId: 'JHUMKI3' }
-        ];
-        document.getElementById('totalTagsCount').innerText = tagsList.length;
-        showScreen('modeScreen');
-    }
-
-    // -----------------------------------------
-    // 2. CAMERA & WORKFLOW LOGIC
-    // -----------------------------------------
     async function startCameraMode(mode) {
         if(tagsList.length === 0) { alert("List khali hai!"); return; }
-        
         currentPhotoMode = mode;
-        currentIndex = 0; // Start from first tag
-        
+        currentIndex = 0; 
         showScreen('cameraScreen');
         await initCamera();
         updateUIForCurrentTag();
@@ -181,8 +169,10 @@
             });
             video.srcObject = cameraStream;
             
-            // Reset UI
+            enablePinchToZoom(cameraStream);
+            
             video.style.display = 'block';
+            video.style.transform = 'scale(1)'; 
             document.getElementById('previewImage').style.display = 'none';
             document.getElementById('captureControls').style.display = 'block';
             document.getElementById('actionControls').style.display = 'none';
@@ -190,6 +180,58 @@
             alert("Camera error: " + err.message);
         }
     }
+
+    function enablePinchToZoom(stream) {
+        videoTrack = stream.getVideoTracks()[0];
+        const capabilities = videoTrack.getCapabilities();
+        if (capabilities.zoom) {
+            minZoom = capabilities.zoom.min;
+            maxZoom = capabilities.zoom.max;
+            currentZoom = videoTrack.getSettings().zoom || minZoom;
+        } 
+    }
+
+    const videoElement = document.getElementById('videoElement');
+
+    videoElement.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            initialPinchDistance = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+        }
+    });
+
+    videoElement.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && initialPinchDistance) {
+            e.preventDefault(); 
+            const currentDistance = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+            const distanceDiff = currentDistance - initialPinchDistance;
+            let newZoom = currentZoom + (distanceDiff * 0.015); 
+            newZoom = Math.min(Math.max(newZoom, minZoom), maxZoom);
+
+            if (videoTrack && videoTrack.getCapabilities().zoom) {
+                videoTrack.applyConstraints({ advanced: [{ zoom: newZoom }] }).catch(()=>{});
+            } else {
+                videoElement.style.transform = `scale(${newZoom})`;
+            }
+        }
+    }, { passive: false });
+
+    videoElement.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+            initialPinchDistance = null;
+            if (videoTrack && videoTrack.getCapabilities().zoom) {
+                currentZoom = videoTrack.getSettings().zoom || currentZoom;
+            } else {
+                let scaleVal = videoElement.style.transform.replace('scale(', '').replace(')', '');
+                currentZoom = parseFloat(scaleVal) || 1;
+            }
+        }
+    });
 
     function updateUIForCurrentTag() {
         if (currentIndex >= tagsList.length) {
@@ -201,12 +243,9 @@
         let item = tagsList[currentIndex];
         document.getElementById('modeDisplay').innerText = currentPhotoMode + " MODE";
         document.getElementById('progressDisplay').innerText = `${currentIndex + 1} / ${tagsList.length}`;
-        
         document.getElementById('currentTag').innerText = item.tagId;
         document.getElementById('currentJob').innerText = item.jobId;
-        document.getElementById('currentReq').innerText = item.reqId;
         
-        // Ensure camera is active
         document.getElementById('videoElement').style.display = 'block';
         document.getElementById('previewImage').style.display = 'none';
         document.getElementById('captureControls').style.display = 'block';
@@ -220,38 +259,39 @@
 
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        if (!videoTrack || !videoTrack.getCapabilities().zoom) {
+             let scale = currentZoom;
+             ctx.translate(canvas.width / 2, canvas.height / 2);
+             ctx.scale(scale, scale);
+             ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+             ctx.setTransform(1, 0, 0, 1, 0, 0); 
+        } else {
+             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
 
-        currentImageData = canvas.toDataURL('image/jpeg', 0.8);
+        currentImageData = canvas.toDataURL('image/jpeg', 0.85); 
 
-        // Show Preview
         const preview = document.getElementById('previewImage');
         preview.src = currentImageData;
         preview.style.display = 'block';
         video.style.display = 'none';
 
-        // Toggle Buttons
         document.getElementById('captureControls').style.display = 'none';
         document.getElementById('actionControls').style.display = 'flex';
         
-        // 🚀 Auto-Send to PC in background (Saves time)
         sendToPC(currentImageData);
     }
 
     function retakePhoto() {
-        let confirmRetake = confirm("Kya aap purani photo replace karna chahte hain? \n\n(Nayi photo click karni padegi)");
-        if (confirmRetake) {
-            // Wapas camera khol do
-            document.getElementById('videoElement').style.display = 'block';
-            document.getElementById('previewImage').style.display = 'none';
-            document.getElementById('captureControls').style.display = 'block';
-            document.getElementById('actionControls').style.display = 'none';
-            currentImageData = null;
-        }
+        document.getElementById('videoElement').style.display = 'block';
+        document.getElementById('previewImage').style.display = 'none';
+        document.getElementById('captureControls').style.display = 'block';
+        document.getElementById('actionControls').style.display = 'none';
+        currentImageData = null;
     }
 
     function nextTag() {
-        // Agle tag par jao
         currentIndex++;
         updateUIForCurrentTag();
     }
@@ -267,14 +307,9 @@
                 photoType: currentPhotoMode,
                 image: imgData
             });
-        } else {
-            console.log("Demo Mode: Photo 'sent' to PC conceptually.");
         }
     }
 
-    // -----------------------------------------
-    // 3. NAVIGATION HELPERS
-    // -----------------------------------------
     function showScreen(screenId) {
         document.getElementById('connectScreen').style.display = 'none';
         document.getElementById('modeScreen').style.display = 'none';
