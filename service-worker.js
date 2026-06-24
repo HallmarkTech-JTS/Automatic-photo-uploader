@@ -1,6 +1,6 @@
 // Jab bhi aap index.html me naya update karein, is Version (v1) ko v2, v3 me badal dein.
 // Version change hote hi purana cache delete ho jayega aur naya code install ho jayega.
-const CACHE_NAME = 'huid-camera-v2'; 
+const CACHE_NAME = 'huid-camera-v3'; 
 
 // Files jo offline hone par bhi app chalane ke liye zaroori hain
 const urlsToCache = [

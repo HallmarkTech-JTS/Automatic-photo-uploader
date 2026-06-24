@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="app-manifest.json">
     <meta name="theme-color" content="#1e3a8a">
     <link rel="apple-touch-icon" href="icon-192.png">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>HUID Native Camera Pro</title>
+    <title>HUID Camera Engine</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f3f4f6; --text: #1f2937; --success: #10b981; --danger: #ef4444; --warning: #f59e0b;}
@@ -21,47 +21,59 @@
         .btn-success { background: var(--success); }
         .btn-danger { background: var(--danger); }
         .btn-warning { background: var(--warning); color: black;}
+        
+        /* Device Toggle UI */
+        .device-toggle { background: #e0e7ff; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #a5b4fc; display: flex; justify-content: space-around; align-items: center; font-size: 14px; font-weight: bold;}
+        .toggle-btn { background: #fff; border: 2px solid #cbd5e1; padding: 8px 12px; border-radius: 6px; cursor: pointer; color: #64748b;}
+        .toggle-btn.active { background: #3b82f6; color: white; border-color: #2563eb;}
+
         .mode-box { border: 2px dashed #9ca3af; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
         .sync-info { font-size: 13px; color: var(--success); font-weight: bold; margin-bottom: 15px; }
         .header-bar { display: flex; justify-content: space-between; background: #1e3a8a; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; margin-bottom: 10px;}
         .tag-info { background: #eff6ff; padding: 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; color: #1e40af; border: 1px solid #bfdbfe; font-size: 18px;}
         .sub-info { font-size: 12px; color: #6b7280; display: block; margin-top: 4px; }
         
-        /* Naya Camera UI CSS */
-        #videoElement { width: 100%; max-height: 350px; object-fit: cover; border-radius: 8px; background: #000; margin-bottom: 15px; display: none; border: 2px solid #e5e7eb;}
         #previewImage { width: 100%; height: 350px; object-fit: contain; border-radius: 8px; background: #f3f4f6; margin-bottom: 15px; border: 2px solid #e5e7eb; display: none;}
+        #videoElement { width: 100%; max-height: 350px; object-fit: cover; border-radius: 8px; background: #000; margin-bottom: 15px; display: none; border: 2px solid #e5e7eb;}
         
         .action-row { display: flex; gap: 10px; }
         .action-row .btn { margin-bottom: 0; }
         #statusMsg { font-size: 14px; margin-top: 10px; font-weight: bold; color: #4b5563; }
+        #nativeCameraInput { display: none; }
         .placeholder-box { width: 100%; height: 200px; border: 2px dashed #d1d5db; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-weight: bold; margin-bottom: 15px; font-size: 14px;}
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>📸 HUID Native Camera</h2>
+    <h2>📸 HUID Camera Engine</h2>
 
     <div id="connectScreen">
-        <p style="font-size: 14px; color: #6b7280;">PC me extension kholiye aur wahan likha ID yahan dalein:</p>
+        <p style="font-size: 14px; color: #6b7280;">PC Dashboard par likha ID yahan dalein:</p>
         <input type="text" id="pcIdInput" placeholder="Enter PC ID">
-        <button class="btn btn-primary" onclick="connectToPC()">🔗 Connect to PC</button>
+        <button class="btn btn-primary" onclick="connectToPC()">🔗 Connect</button>
         <div id="statusMsg">Waiting to connect...</div>
     </div>
 
     <div id="modeScreen">
-        <div class="sync-info">✅ PC se Data Sync ho gaya (<span id="totalTagsCount">0</span> Tags)</div>
+        <div class="sync-info">✅ Connected (<span id="totalTagsCount">0</span> Tags Pending)</div>
+        
+        <div class="device-toggle">
+            <div id="btnNative" class="toggle-btn active" onclick="setCameraMode('native')">📱 Mobile App</div>
+            <div id="btnLive" class="toggle-btn" onclick="setCameraMode('live')">💻 PC / USB Lens</div>
+        </div>
+
         <div class="mode-box">
-            <p style="margin-top: 0; font-weight: bold;">Kaunsi photo click karni hai?</p>
-            <button class="btn btn-primary" onclick="startCameraMode('ARTICLE')">📸 1. Article Photos</button>
-            <button class="btn btn-warning" onclick="startCameraMode('HUID')">🔍 2. HUID Photos</button>
+            <p style="margin-top: 0; font-weight: bold;">Select Capture Mode:</p>
+            <button class="btn btn-primary" onclick="startWorkflow('ARTICLE')">📸 1. Article Photos</button>
+            <button class="btn btn-warning" onclick="startWorkflow('HUID')">🔍 2. HUID Photos</button>
         </div>
         <button class="btn btn-danger" onclick="disconnect()">❌ Disconnect</button>
     </div>
 
     <div id="cameraScreen">
         <div class="header-bar">
-            <span id="modeDisplay">ARTICLE MODE</span>
+            <span id="modeDisplay">ARTICLE</span>
             <span id="progressDisplay">1 / 50</span>
         </div>
         <div class="tag-info">
@@ -69,17 +81,22 @@
             <span class="sub-info">Job Card: <span id="currentJob">126574672</span></span>
         </div>
         
-        <video id="videoElement" autoplay playsinline></video>
-        <img id="previewImage" src="">
-        <div id="placeholderBox" class="placeholder-box">Loading Camera...</div>
+        <input type="file" id="nativeCameraInput" accept="image/*" capture="environment">
         
-        <div id="captureControls" style="display: none;">
-            <button class="btn btn-success" style="font-size: 20px; padding: 20px;" onclick="captureLivePhoto()">📸 Click Photo</button>
-            <button class="btn btn-warning" onclick="switchCamera()">🔄 Switch Camera</button>
+        <video id="videoElement" autoplay playsinline></video>
+        
+        <div id="placeholderBox" class="placeholder-box">Ready for Capture</div>
+        <img id="previewImage" src="">
+        
+        <div id="captureControls">
+            <button id="btnTriggerNative" class="btn btn-success" style="font-size: 20px; padding: 20px;" onclick="document.getElementById('nativeCameraInput').click()">📸 Open Mobile Camera</button>
+            
+            <button id="btnTriggerLive" class="btn btn-success" style="display:none; font-size: 20px; padding: 20px;" onclick="captureLiveFrame()">📸 Capture Frame</button>
+            <button id="btnSwitchLens" class="btn btn-info" style="display:none;" onclick="switchLiveCamera()">🔄 Switch USB Lens</button>
         </div>
         
         <div id="actionControls" class="action-row" style="display: none;">
-            <button class="btn btn-danger" onclick="retakePhoto()">🔄 Retake</button>
+            <button class="btn btn-danger" onclick="triggerRetake()">🔄 Retake</button>
             <button class="btn btn-primary" onclick="nextTag()">⏭️ Next Tag</button>
         </div>
         
@@ -88,139 +105,48 @@
 </div>
 
 <script>
-    let peer = null;
-    let conn = null;
-    let tagsList = []; 
-    let currentIndex = 0;
+    let peer = null; let conn = null;
+    let tagsList = []; let currentIndex = 0;
     let currentPhotoMode = 'ARTICLE'; 
-    let currentImageData = null;
+    let engineMode = 'native'; // 'native' for mobile app, 'live' for PC/USB web stream
 
-    // --- NAYA CAMERA LOGIC ---
+    // Live Stream Variables
     let currentStream = null;
     let videoDevices = [];
     let currentDeviceIndex = 0;
 
-    // Camera list dhundhne ke liye (USB aur Inbuilt dono)
-    async function loadCameraDevices() {
-        try {
-            // Permission mangna zaroori hai devices dekhne se pehle
-            await navigator.mediaDevices.getUserMedia({ video: true, audio: false }).then(stream => {
-                stream.getTracks().forEach(track => track.stop());
-            });
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            videoDevices = devices.filter(device => device.kind === 'videoinput');
-        } catch (err) {
-            console.error("Camera access issue:", err);
-        }
-    }
-
-    async function startLiveCamera() {
-        if (currentStream) { currentStream.getTracks().forEach(track => track.stop()); }
-        
-        if (videoDevices.length === 0) { await loadCameraDevices(); }
-
-        let constraints = { video: { facingMode: "environment" } }; // Default mobile back camera
-        
-        // Agar USB ya dusre cameras detect hue hain
-        if (videoDevices.length > 0) {
-            constraints = { video: { deviceId: { exact: videoDevices[currentDeviceIndex].deviceId } } };
-        }
-
-        try {
-            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-            const videoElement = document.getElementById('videoElement');
-            videoElement.srcObject = currentStream;
-            
-            // UI Update
-            videoElement.style.display = 'block';
-            document.getElementById('placeholderBox').style.display = 'none';
-            document.getElementById('previewImage').style.display = 'none';
-            document.getElementById('captureControls').style.display = 'block';
-            document.getElementById('actionControls').style.display = 'none';
-        } catch (error) {
-            console.warn("Camera fallback triggered");
-            // Agar specified camera na mile toh default kholo
-            currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            document.getElementById('videoElement').srcObject = currentStream;
-            document.getElementById('videoElement').style.display = 'block';
-            document.getElementById('placeholderBox').style.display = 'none';
-            document.getElementById('captureControls').style.display = 'block';
-        }
-    }
-
-    function switchCamera() {
-        if (videoDevices.length > 1) {
-            currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
-            startLiveCamera();
-        } else {
-            alert("Sirf ek hi camera detect hua hai.");
-        }
-    }
-
-    function captureLivePhoto() {
-        if (!currentStream) return;
-        
-        const video = document.getElementById('videoElement');
-        const canvas = document.createElement('canvas');
-        
-        // Quality maintain rakhne ke liye size adjust karein
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        currentImageData = canvas.toDataURL('image/jpeg', 0.90);
-        
-        // UI Updates
-        document.getElementById('previewImage').src = currentImageData;
-        document.getElementById('previewImage').style.display = 'block';
-        video.style.display = 'none';
-        
-        document.getElementById('captureControls').style.display = 'none';
-        document.getElementById('actionControls').style.display = 'flex';
-        
-        sendToPC(currentImageData);
-    }
-    // -------------------------
-
     window.onload = function() {
         let savedId = localStorage.getItem('last_pc_id');
         if(savedId) document.getElementById('pcIdInput').value = savedId;
+    }
+
+    // Toggle Engine Type
+    function setCameraMode(mode) {
+        engineMode = mode;
+        document.getElementById('btnNative').classList.remove('active');
+        document.getElementById('btnLive').classList.remove('active');
         
-        // PWA Service Worker logic...
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./service-worker.js')
-                .then((registration) => {
-                    registration.addEventListener('updatefound', () => {
-                        const newWorker = registration.installing;
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                window.location.reload();
-                            }
-                        });
-                    });
-                }).catch(err => console.log('SW setup error', err));
+        if (mode === 'native') {
+            document.getElementById('btnNative').classList.add('active');
+        } else {
+            document.getElementById('btnLive').classList.add('active');
+            loadCameraDevices(); // Pre-load PC cameras
         }
     }
 
     function connectToPC() {
         const pcId = document.getElementById('pcIdInput').value.trim().toUpperCase();
-        const status = document.getElementById('statusMsg');
-        if(!pcId) { alert("Please enter PC ID!"); return; }
-        
+        if(!pcId) return alert("Please enter ID!");
         localStorage.setItem('last_pc_id', pcId);
-        status.innerText = "⏳ Connecting...";
-        status.style.color = "#d97706";
+        
+        document.getElementById('statusMsg').innerText = "⏳ Connecting...";
         peer = new Peer(); 
 
-        peer.on('open', function(id) {
+        peer.on('open', (id) => {
             conn = peer.connect(pcId);
-            conn.on('open', function() {
-                status.innerText = "✅ Connected to PC!";
-                status.style.color = "green";
-            });
+            conn.on('open', () => { document.getElementById('statusMsg').innerText = "✅ Connected!"; });
 
-            conn.on('data', function(data) {
+            conn.on('data', (data) => {
                 if(data.type === 'SYNC_LIST') {
                     tagsList = data.items;
                     document.getElementById('totalTagsCount').innerText = tagsList.length;
@@ -233,16 +159,15 @@
                         currentPhotoMode = data.photoType;
                         showScreen('cameraScreen');
                         updateUIForCurrentTag();
-                        alert(`PC se command: Kripya ${data.tagId} (${data.photoType}) ki photo wapas kheinchein!`);
+                        triggerRetake(); // Automatically opens camera
                     }
                 }
             });
-            conn.on('error', function() { status.innerText = "❌ Connection Failed!"; status.style.color = "red"; });
         });
     }
 
-    function startCameraMode(mode) {
-        if(tagsList.length === 0) { alert("List khali hai!"); return; }
+    function startWorkflow(mode) {
+        if(tagsList.length === 0) return alert("List khali hai!");
         currentPhotoMode = mode;
         currentIndex = 0; 
         showScreen('cameraScreen');
@@ -251,52 +176,149 @@
 
     function updateUIForCurrentTag() {
         if (currentIndex >= tagsList.length) {
-            alert(`🎉 Congratulations! Saari ${currentPhotoMode} photos complete ho gayi hain.`);
-            goBackToMode();
-            return;
+            alert(`🎉 ${currentPhotoMode} mode complete!`);
+            goBackToMode(); return;
         }
 
         let item = tagsList[currentIndex];
-        document.getElementById('modeDisplay').innerText = currentPhotoMode + " MODE";
+        document.getElementById('modeDisplay').innerText = currentPhotoMode;
         document.getElementById('progressDisplay').innerText = `${currentIndex + 1} / ${tagsList.length}`;
         document.getElementById('currentTag').innerText = item.tagId;
         document.getElementById('currentJob').innerText = item.jobId;
         
-        // Ab native camera popup ki jagah live stream start hoga
-        startLiveCamera();
+        resetUI();
+
+        if (engineMode === 'live') {
+            startLiveStream();
+        } else {
+            document.getElementById('btnTriggerNative').style.display = 'block';
+            document.getElementById('placeholderBox').style.display = 'flex';
+        }
     }
 
-    function retakePhoto() { 
-        startLiveCamera(); // Retake par seedha live feed dobara khul jayega
+    function resetUI() {
+        document.getElementById('previewImage').style.display = 'none';
+        document.getElementById('videoElement').style.display = 'none';
+        document.getElementById('placeholderBox').style.display = 'none';
+        
+        document.getElementById('captureControls').style.display = 'block';
+        document.getElementById('actionControls').style.display = 'none';
+        
+        document.getElementById('btnTriggerNative').style.display = 'none';
+        document.getElementById('btnTriggerLive').style.display = 'none';
+        document.getElementById('btnSwitchLens').style.display = 'none';
+        document.getElementById('nativeCameraInput').value = "";
+    }
+
+    // =====================================
+    // NATIVE CAMERA LOGIC (Mobile Focus)
+    // =====================================
+    document.getElementById('nativeCameraInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let w = img.width, h = img.height;
+                if (w > 1920) { h *= 1920/w; w = 1920; }
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                let b64 = canvas.toDataURL('image/jpeg', 0.90);
+                
+                showPreviewAndSend(b64);
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // =====================================
+    // LIVE CAMERA LOGIC (PC / USB Lens Focus)
+    // =====================================
+    async function loadCameraDevices() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            videoDevices = devices.filter(d => d.kind === 'videoinput');
+        } catch (err) {}
+    }
+
+    async function startLiveStream() {
+        if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); }
+        
+        let constraints = { video: { facingMode: "environment" } };
+        if (videoDevices.length > 0) { constraints = { video: { deviceId: { exact: videoDevices[currentDeviceIndex].deviceId } } }; }
+
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            let video = document.getElementById('videoElement');
+            video.srcObject = currentStream;
+            video.style.display = 'block';
+            
+            document.getElementById('btnTriggerLive').style.display = 'block';
+            if(videoDevices.length > 1) document.getElementById('btnSwitchLens').style.display = 'inline-block';
+        } catch (error) {
+            alert("Camera not found or blocked. Switch to Mobile mode.");
+        }
+    }
+
+    function switchLiveCamera() {
+        if (videoDevices.length > 1) {
+            currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
+            startLiveStream();
+        }
+    }
+
+    function captureLiveFrame() {
+        if (!currentStream) return;
+        const video = document.getElementById('videoElement');
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        showPreviewAndSend(canvas.toDataURL('image/jpeg', 0.90));
+    }
+
+    // =====================================
+    // COMMON LOGIC
+    // =====================================
+    function showPreviewAndSend(base64Data) {
+        document.getElementById('previewImage').src = base64Data;
+        document.getElementById('previewImage').style.display = 'block';
+        document.getElementById('videoElement').style.display = 'none';
+        document.getElementById('placeholderBox').style.display = 'none';
+        
+        document.getElementById('captureControls').style.display = 'none';
+        document.getElementById('actionControls').style.display = 'flex';
+        
+        if (conn && conn.open) {
+            let item = tagsList[currentIndex];
+            conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: base64Data });
+        }
+    }
+
+    function triggerRetake() {
+        resetUI();
+        if(engineMode === 'native') document.getElementById('nativeCameraInput').click();
+        else startLiveStream();
     }
     
-    function nextTag() { 
-        currentIndex++; 
-        updateUIForCurrentTag(); 
+    function nextTag() { currentIndex++; updateUIForCurrentTag(); }
+    
+    function showScreen(id) {
+        document.querySelectorAll('#connectScreen, #modeScreen, #cameraScreen').forEach(el => el.style.display = 'none');
+        document.getElementById(id).style.display = 'block';
+        if(id !== 'cameraScreen' && currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
     }
-
-    function sendToPC(imgData) {
-        let item = tagsList[currentIndex];
-        if (conn && conn.open) {
-            conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: imgData });
-        }
-    }
-
-    function showScreen(screenId) {
-        document.getElementById('connectScreen').style.display = 'none';
-        document.getElementById('modeScreen').style.display = 'none';
-        document.getElementById('cameraScreen').style.display = 'none';
-        document.getElementById(screenId).style.display = 'block';
-        
-        // Agar screen switch ho rahi hai toh camera band kar do taaki battery aur RAM bache
-        if(screenId !== 'cameraScreen' && currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
-            currentStream = null;
-        }
-    }
-
+    
     function goBackToMode() { showScreen('modeScreen'); }
     function disconnect() { if(peer) peer.destroy(); location.reload(); }
+
+    // Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./service-worker.js').catch(err => console.log(err));
+    }
 </script>
 </body>
 </html>
