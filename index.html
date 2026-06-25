@@ -120,6 +120,15 @@
         if(savedId) document.getElementById('pcIdInput').value = savedId;
     }
 
+    // Galti se page refresh ya back hone par warning dena
+    window.addEventListener('beforeunload', function (e) {
+        // Warning sirf tab do jab PC se connection chal raha ho
+        if (conn && conn.open) {
+            e.preventDefault();
+            e.returnValue = ''; // Yeh browser ka default warning popup dikhayega
+        }
+    });
+
     // Toggle Engine Type
     function setCameraMode(mode) {
         engineMode = mode;
@@ -153,13 +162,20 @@
                     showScreen('modeScreen');
                 } 
                 else if (data.type === 'RETAKE_PHOTO') {
-                    let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId);
+                    // 🚀 FIX: Duplicate IDs se bachne ke liye Job ID aur Tag ID dono check ho rahe hain
+                    let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId && t.jobId === data.jobId);
+                    
                     if(targetIdx !== -1) {
                         currentIndex = targetIdx;
                         currentPhotoMode = data.photoType;
+                        
                         showScreen('cameraScreen');
                         updateUIForCurrentTag();
-                        triggerRetake(); // Automatically opens camera
+                        
+                        // Alert user if in Mobile Native mode, otherwise Live Camera opens automatically
+                        if (engineMode === 'native') {
+                            alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}\nKripya 'Open Mobile Camera' button dabayein.`);
+                        }
                     }
                 }
             });
@@ -226,7 +242,8 @@
                 if (w > 1920) { h *= 1920/w; w = 1920; }
                 canvas.width = w; canvas.height = h;
                 canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                let b64 = canvas.toDataURL('image/jpeg', 0.90);
+                // Compressed Base64 Image
+                let b64 = canvas.toDataURL('image/jpeg', 0.90); 
                 
                 showPreviewAndSend(b64);
             };
@@ -294,6 +311,7 @@
         
         if (conn && conn.open) {
             let item = tagsList[currentIndex];
+            // Job ID, Req ID, Tag ID sab ek sath send ho raha hai
             conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: base64Data });
         }
     }
