@@ -1,14 +1,14 @@
-// Jab bhi aap index.html me naya update karein, is Version (v1) ko v2, v3 me badal dein.
-// Version change hote hi purana cache delete ho jayega aur naya code install ho jayega.
-const CACHE_NAME = 'huid-camera-v5'; 
+// Version ko v6 kar diya hai taaki purana cache delete ho jaye aur naya code install ho
+const CACHE_NAME = 'huid-camera-v6'; 
 
 // Files jo offline hone par bhi app chalane ke liye zaroori hain
 const urlsToCache = [
     './',
     './index.html',
+    './mobile.js',         // Nayi JS file ko offline chalane ke liye add kiya gaya hai
     './manifest.json',
-    './icon-192.png',
-    './icon-512.png',
+    './icon-192.png',      // Aapka custom icon
+    './icon-512.png',      // Aapka custom icon
     'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js'
 ];
 
