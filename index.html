@@ -104,7 +104,239 @@
     </div>
 </div>
 
-<script src="mobile.js"></script>
+<script>
+    let peer = null; let conn = null;
+    let tagsList = []; let currentIndex = 0;
+    let currentPhotoMode = 'ARTICLE'; 
+    let engineMode = 'native'; // 'native' for mobile app, 'live' for PC/USB web stream
 
+    // Live Stream Variables
+    let currentStream = null;
+    let videoDevices = [];
+    let currentDeviceIndex = 0;
+
+    window.onload = function() {
+        let savedId = localStorage.getItem('last_pc_id');
+        if(savedId) document.getElementById('pcIdInput').value = savedId;
+    }
+
+    // Galti se page refresh ya back hone par warning dena
+    window.addEventListener('beforeunload', function (e) {
+        // Warning sirf tab do jab PC se connection chal raha ho
+        if (conn && conn.open) {
+            e.preventDefault();
+            e.returnValue = ''; // Yeh browser ka default warning popup dikhayega
+        }
+    });
+
+    // Toggle Engine Type
+    function setCameraMode(mode) {
+        engineMode = mode;
+        document.getElementById('btnNative').classList.remove('active');
+        document.getElementById('btnLive').classList.remove('active');
+        
+        if (mode === 'native') {
+            document.getElementById('btnNative').classList.add('active');
+        } else {
+            document.getElementById('btnLive').classList.add('active');
+            loadCameraDevices(); // Pre-load PC cameras
+        }
+    }
+
+    function connectToPC() {
+        const pcId = document.getElementById('pcIdInput').value.trim().toUpperCase();
+        if(!pcId) return alert("Please enter ID!");
+        localStorage.setItem('last_pc_id', pcId);
+        
+        document.getElementById('statusMsg').innerText = "⏳ Connecting...";
+        peer = new Peer(); 
+
+        peer.on('open', (id) => {
+            conn = peer.connect(pcId);
+            conn.on('open', () => { document.getElementById('statusMsg').innerText = "✅ Connected!"; });
+
+            conn.on('data', (data) => {
+                if(data.type === 'SYNC_LIST') {
+                    tagsList = data.items;
+                    document.getElementById('totalTagsCount').innerText = tagsList.length;
+                    showScreen('modeScreen');
+                } 
+                else if (data.type === 'RETAKE_PHOTO') {
+                    // 🚀 FIX: Duplicate IDs se bachne ke liye Job ID aur Tag ID dono check ho rahe hain
+                    let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId && t.jobId === data.jobId);
+                    
+                    if(targetIdx !== -1) {
+                        currentIndex = targetIdx;
+                        currentPhotoMode = data.photoType;
+                        
+                        showScreen('cameraScreen');
+                        updateUIForCurrentTag();
+                        
+                        // Alert user if in Mobile Native mode, otherwise Live Camera opens automatically
+                        if (engineMode === 'native') {
+                            alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}\nKripya 'Open Mobile Camera' button dabayein.`);
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    function startWorkflow(mode) {
+        if(tagsList.length === 0) return alert("List khali hai!");
+        currentPhotoMode = mode;
+        currentIndex = 0; 
+        showScreen('cameraScreen');
+        updateUIForCurrentTag();
+    }
+
+    function updateUIForCurrentTag() {
+        if (currentIndex >= tagsList.length) {
+            alert(`🎉 ${currentPhotoMode} mode complete!`);
+            goBackToMode(); return;
+        }
+
+        let item = tagsList[currentIndex];
+        document.getElementById('modeDisplay').innerText = currentPhotoMode;
+        document.getElementById('progressDisplay').innerText = `${currentIndex + 1} / ${tagsList.length}`;
+        document.getElementById('currentTag').innerText = item.tagId;
+        document.getElementById('currentJob').innerText = item.jobId;
+        
+        resetUI();
+
+        if (engineMode === 'live') {
+            startLiveStream();
+        } else {
+            document.getElementById('btnTriggerNative').style.display = 'block';
+            document.getElementById('placeholderBox').style.display = 'flex';
+        }
+    }
+
+    function resetUI() {
+        document.getElementById('previewImage').style.display = 'none';
+        document.getElementById('videoElement').style.display = 'none';
+        document.getElementById('placeholderBox').style.display = 'none';
+        
+        document.getElementById('captureControls').style.display = 'block';
+        document.getElementById('actionControls').style.display = 'none';
+        
+        document.getElementById('btnTriggerNative').style.display = 'none';
+        document.getElementById('btnTriggerLive').style.display = 'none';
+        document.getElementById('btnSwitchLens').style.display = 'none';
+        document.getElementById('nativeCameraInput').value = "";
+    }
+
+    // =====================================
+    // NATIVE CAMERA LOGIC (Mobile Focus)
+    // =====================================
+    document.getElementById('nativeCameraInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let w = img.width, h = img.height;
+                if (w > 1920) { h *= 1920/w; w = 1920; }
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                // Compressed Base64 Image
+                let b64 = canvas.toDataURL('image/jpeg', 0.90); 
+                
+                showPreviewAndSend(b64);
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // =====================================
+    // LIVE CAMERA LOGIC (PC / USB Lens Focus)
+    // =====================================
+    async function loadCameraDevices() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            videoDevices = devices.filter(d => d.kind === 'videoinput');
+        } catch (err) {}
+    }
+
+    async function startLiveStream() {
+        if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); }
+        
+        let constraints = { video: { facingMode: "environment" } };
+        if (videoDevices.length > 0) { constraints = { video: { deviceId: { exact: videoDevices[currentDeviceIndex].deviceId } } }; }
+
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            let video = document.getElementById('videoElement');
+            video.srcObject = currentStream;
+            video.style.display = 'block';
+            
+            document.getElementById('btnTriggerLive').style.display = 'block';
+            if(videoDevices.length > 1) document.getElementById('btnSwitchLens').style.display = 'inline-block';
+        } catch (error) {
+            alert("Camera not found or blocked. Switch to Mobile mode.");
+        }
+    }
+
+    function switchLiveCamera() {
+        if (videoDevices.length > 1) {
+            currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
+            startLiveStream();
+        }
+    }
+
+    function captureLiveFrame() {
+        if (!currentStream) return;
+        const video = document.getElementById('videoElement');
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        showPreviewAndSend(canvas.toDataURL('image/jpeg', 0.90));
+    }
+
+    // =====================================
+    // COMMON LOGIC
+    // =====================================
+    function showPreviewAndSend(base64Data) {
+        document.getElementById('previewImage').src = base64Data;
+        document.getElementById('previewImage').style.display = 'block';
+        document.getElementById('videoElement').style.display = 'none';
+        document.getElementById('placeholderBox').style.display = 'none';
+        
+        document.getElementById('captureControls').style.display = 'none';
+        document.getElementById('actionControls').style.display = 'flex';
+        
+        if (conn && conn.open) {
+            let item = tagsList[currentIndex];
+            // Job ID, Req ID, Tag ID sab ek sath send ho raha hai
+            conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: base64Data });
+        }
+    }
+
+    function triggerRetake() {
+        resetUI();
+        if(engineMode === 'native') document.getElementById('nativeCameraInput').click();
+        else startLiveStream();
+    }
+    
+    function nextTag() { currentIndex++; updateUIForCurrentTag(); }
+    
+    function showScreen(id) {
+        document.querySelectorAll('#connectScreen, #modeScreen, #cameraScreen').forEach(el => el.style.display = 'none');
+        document.getElementById(id).style.display = 'block';
+        if(id !== 'cameraScreen' && currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+    }
+    
+    function goBackToMode() { showScreen('modeScreen'); }
+    function disconnect() { if(peer) peer.destroy(); location.reload(); }
+
+    // Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./service-worker.js').catch(err => console.log(err));
+    }
+</script>
 </body>
 </html>
