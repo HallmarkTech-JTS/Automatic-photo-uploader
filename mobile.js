@@ -197,7 +197,7 @@ let peer = null; let conn = null;
                 if (autoSendTimeout) clearTimeout(autoSendTimeout);
                 autoSendTimeout = setTimeout(() => {
                     autoSendAndNext();
-                }, 1200); 
+                }, 1600); 
 
                 setTimeout(() => {
                     currentBtn.innerHTML = originalText;
