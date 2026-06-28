@@ -43,7 +43,13 @@ let peer = null; let conn = null;
         localStorage.setItem('last_pc_id', pcId);
         
         document.getElementById('statusMsg').innerText = "⏳ Connecting...";
-        peer = new Peer(); 
+        // 🔥 NAYA CODE: Google STUN Servers (Mobile ko PC se connect karne ke liye)
+        peer = new Peer({
+            config: {'iceServers': [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]}
+        }); 
 
         peer.on('open', (id) => {
             conn = peer.connect(pcId);
