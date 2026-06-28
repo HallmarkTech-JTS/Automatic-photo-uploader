@@ -1,111 +1,103 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="manifest" href="./manifest.json">
-    <meta name="theme-color" content="#1e3a8a">
-    <link rel="apple-touch-icon" href="icon-192.png">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>HUID Camera Engine</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <style>
-        :root { --primary: #2563eb; --bg: #f3f4f6; --text: #1f2937; --success: #10b981; --danger: #ef4444; --warning: #f59e0b;}
-        body { font-family: system-ui, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: var(--text); }
-        .container { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 420px; margin: 0 auto; text-align: center; }
-        h2 { color: var(--primary); margin-top: 0; font-size: 20px; }
-        #connectScreen, #modeScreen, #cameraScreen { display: none; }
-        #connectScreen { display: block; } 
-        input[type="text"] { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #bfdbfe; border-radius: 8px; font-size: 16px; text-align: center; font-weight: bold; box-sizing: border-box; }
-        .btn { color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px;}
-        .btn-primary { background: var(--primary); }
-        .btn-success { background: var(--success); }
-        .btn-danger { background: var(--danger); }
-        .btn-warning { background: var(--warning); color: black;}
-        
-        .device-toggle { background: #e0e7ff; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #a5b4fc; display: flex; justify-content: space-around; align-items: center; font-size: 14px; font-weight: bold;}
-        .toggle-btn { background: #fff; border: 2px solid #cbd5e1; padding: 8px 12px; border-radius: 6px; cursor: pointer; color: #64748b;}
-        .toggle-btn.active { background: #3b82f6; color: white; border-color: #2563eb;}
+    <script src="peerjs.min.js"></script>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
-        .mode-box { border: 2px dashed #9ca3af; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        .sync-info { font-size: 13px; color: var(--success); font-weight: bold; margin-bottom: 15px; }
-        .header-bar { display: flex; justify-content: space-between; background: #1e3a8a; color: white; padding: 8px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; margin-bottom: 10px;}
-        .tag-info { background: #eff6ff; padding: 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; color: #1e40af; border: 1px solid #bfdbfe; font-size: 18px;}
-        .sub-info { font-size: 12px; color: #6b7280; display: block; margin-top: 4px; }
-        
-        #previewImage { width: 100%; height: 350px; object-fit: contain; border-radius: 8px; background: #f3f4f6; margin-bottom: 15px; border: 2px solid #e5e7eb; display: none;}
-        #videoElement { width: 100%; max-height: 350px; object-fit: cover; border-radius: 8px; background: #000; margin-bottom: 15px; display: none; border: 2px solid #e5e7eb;}
-        
-        .action-row { display: flex; gap: 10px; }
-        .action-row .btn { margin-bottom: 0; }
-        #statusMsg { font-size: 14px; margin-top: 10px; font-weight: bold; color: #4b5563; }
-        #nativeCameraInput { display: none; }
-        .placeholder-box { width: 100%; height: 200px; border: 2px dashed #d1d5db; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-weight: bold; margin-bottom: 15px; font-size: 14px;}
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f1f5f9; text-align: center; }
+        .container { padding: 15px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        input[type="text"], select { width: 90%; padding: 12px; margin: 10px 0; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 16px; font-weight: bold; text-align: center; }
+        button { border: none; padding: 15px; border-radius: 8px; font-size: 16px; font-weight: bold; color: white; cursor: pointer; width: 100%; margin-bottom: 10px; }
+        .btn-blue { background: #3b82f6; } .btn-green { background: #10b981; } .btn-red { background: #ef4444; } .btn-gray { background: #64748b; } .btn-orange { background: #f59e0b; color: black; }
+        .mode-btn { background: #e2e8f0; color: #475569; padding: 10px; width: 48%; display: inline-block; font-weight:bold; border: 2px solid transparent; border-radius:6px; cursor: pointer;}
+        .mode-btn.active { background: #3b82f6; color: white; border: 2px solid #1e3a8a; }
+        .flex-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 15px; }
+        #videoElement, #previewImage { width: 100%; max-height: 400px; object-fit: contain; background: #000; border-radius: 8px; margin-bottom: 15px; }
+        #placeholderBox { width: 100%; height: 250px; background: #e2e8f0; border: 2px dashed #94a3b8; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: bold; margin-bottom: 15px; flex-direction: column;}
+        .header-bar { background: #1e3a8a; color: white; padding: 15px; display: flex; justify-content: space-between; font-weight: bold; border-radius: 8px; margin-bottom: 15px;}
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>📸 HUID Camera Engine</h2>
-
-    <div id="connectScreen">
-        <p style="font-size: 14px; color: #6b7280;">PC Dashboard par likha ID yahan dalein:</p>
-        <input type="text" id="pcIdInput" placeholder="Enter PC ID">
-        <button class="btn btn-primary" onclick="connectToPC()">🔗 Connect</button>
-        <div id="statusMsg">Waiting to connect...</div>
+    <div id="connectScreen" class="container">
+        <h2>📸 HUID Camera Engine</h2>
+        <div class="card">
+            <h3>Enter PC ID</h3>
+            <input type="text" id="pcIdInput" placeholder="e.g. SHOP-ABC12">
+            <button class="btn-blue" onclick="connectToPC()">Connect</button>
+            <p id="statusMsg" style="font-weight: bold; color: #d97706;">Waiting to connect...</p>
+        </div>
     </div>
 
-    <div id="modeScreen">
-        <div class="sync-info">✅ Connected (<span id="totalTagsCount">0</span> Tags Pending)</div>
-        
-        <div class="device-toggle">
-            <div id="btnNative" class="toggle-btn active" onclick="setCameraMode('native')">📱 Mobile App</div>
-            <div id="btnLive" class="toggle-btn" onclick="setCameraMode('live')">💻 PC / USB Lens</div>
-        </div>
+    <div id="modeScreen" class="container" style="display:none;">
+        <div class="card">
+            <h3 style="color: #16a34a;">✅ Connected to PC!</h3>
+            <p>Total Tags Received: <b id="totalTagsCount" style="font-size: 18px; color: #2563eb;">0</b></p>
+            
+            <h4 style="margin-top: 20px; color: #475569;">Select Camera Engine</h4>
+            <div class="flex-row">
+                <button id="btnNative" class="mode-btn active" onclick="setCameraMode('native')">Native Camera</button>
+                <button id="btnLive" class="mode-btn" onclick="setCameraMode('live')">Live Engine</button>
+            </div>
 
-        <div class="mode-box">
-            <p style="margin-top: 0; font-weight: bold;">Select Capture Mode:</p>
-            <button class="btn btn-primary" onclick="startWorkflow('ARTICLE')">📸 1. Article Photos</button>
-            <button class="btn btn-warning" onclick="startWorkflow('HUID')">🔍 2. HUID Photos</button>
+            <button class="btn-blue" style="margin-top: 15px;" onclick="startWorkflow('ARTICLE')">📸 Start ARTICLE Photos</button>
+            <button class="btn-orange" onclick="startWorkflow('HUID')">🔍 Start HUID Photos</button>
+            <button class="btn-gray" onclick="disconnect()">🔌 Disconnect</button>
         </div>
-        <button class="btn btn-danger" onclick="disconnect()">❌ Disconnect</button>
     </div>
 
-    <div id="cameraScreen">
+    <div id="cameraScreen" class="container" style="display:none;">
         <div class="header-bar">
-            <span id="modeDisplay">ARTICLE</span>
-            <span id="progressDisplay">1 / 50</span>
+            <span id="modeDisplay">MODE</span>
+            <span id="progressDisplay">0 / 0</span>
         </div>
         
-        <select id="tagSelector" style="width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 6px; font-weight: bold; border: 2px solid #bfdbfe; font-size: 16px; background: #eff6ff; color: #1e40af;" onchange="jumpToTag(this.value)">
-        </select>
+        <select id="tagSelector" onchange="jumpToTag(this.value)"></select>
+        
+        <div class="card">
+            <h2 style="margin: 0; color: #ef4444;">Tag: <span id="currentTag">TAG-ID</span></h2>
+            <p style="margin: 5px 0 15px 0; font-size: 14px; color: #64748b;">Job Card: <span id="currentJob">JOB-ID</span></p>
 
-        <div class="tag-info">
-            Tag: <span id="currentTag" style="color: #ef4444; font-size: 22px;">Loading...</span>
-            <span class="sub-info">Job Card: <span id="currentJob">...</span></span>
+            <video id="videoElement" autoplay playsinline style="display:none;"></video>
+            <img id="previewImage" style="display:none;">
+            
+            <div id="placeholderBox">
+                <span style="font-size: 30px; margin-bottom: 10px;">📷</span>
+                <span>Ready to Capture</span>
+            </div>
+
+            <div id="captureControls">
+                <input type="file" id="nativeCameraInput" accept="image/*" capture="environment" style="display:none;">
+                <button id="btnTriggerNative" class="btn-green" onclick="document.getElementById('nativeCameraInput').click()" style="display:none; padding: 20px; font-size: 18px;">📸 Open Mobile Camera</button>
+                
+                <button id="btnTriggerLive" class="btn-green" onclick="captureLiveFrame()" style="display:none; padding: 20px; font-size: 18px;">📸 Capture Now</button>
+                <button id="btnSwitchLens" class="btn-gray" onclick="switchLiveCamera()" style="display:none;">🔄 Switch Lens</button>
+            </div>
+
+            <div id="actionControls" class="flex-row" style="display:none;">
+                </div>
+
+            <button class="btn-gray" style="margin-top: 15px;" onclick="goBackToMode()">🔙 Back to Menu</button>
         </div>
-        
-        <input type="file" id="nativeCameraInput" accept="image/*" capture="environment">
-        
-        <video id="videoElement" autoplay playsinline></video>
-        
-        <div id="placeholderBox" class="placeholder-box">Ready for Capture</div>
-        <img id="previewImage" src="">
-        
-        <div id="captureControls">
-            <button id="btnTriggerNative" class="btn btn-success" style="font-size: 20px; padding: 20px;" onclick="document.getElementById('nativeCameraInput').click()">📸 Open Mobile Camera</button>
-            <button id="btnTriggerLive" class="btn btn-success" style="display:none; font-size: 20px; padding: 20px;" onclick="captureLiveFrame()">📸 Capture Frame</button>
-            <button id="btnSwitchLens" class="btn btn-info" style="display:none;" onclick="switchLiveCamera()">🔄 Switch USB Lens</button>
-        </div>
-        
-        <div id="actionControls" class="action-row" style="display: none;">
-            <button class="btn btn-danger" onclick="triggerRetake()">🔄 Retake</button>
-            <button class="btn btn-primary" onclick="nextTag()">⏭️ Next Tag</button>
-        </div>
-        
-        <button class="btn" style="background: #9ca3af; margin-top: 15px;" onclick="goBackToMode()">🔙 Back to Menu</button>
     </div>
-</div>
 
-<script src="mobile.js"></script>
+    <div id="cropScreen" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:9999; flex-direction:column;">
+        <div style="flex:1; width:100%; overflow:hidden; display:flex; align-items:center; justify-content:center; background: black;">
+            <img id="cropImage" style="max-width:100%; max-height:100%;">
+        </div>
+        <div style="padding:15px; display:flex; gap:10px; background:#1e293b; padding-bottom: 30px;">
+            <button onclick="cancelCrop()" style="flex:1; background:#ef4444; color:white; font-size:16px; font-weight:bold; padding:15px; border:none; border-radius:8px;">❌ Cancel</button>
+            <button onclick="applyCropAndSend()" style="flex:1; background:#10b981; color:white; font-size:16px; font-weight:bold; padding:15px; border:none; border-radius:8px;">✅ Crop & Send</button>
+        </div>
+    </div>
+
+    <script src="mobile.js"></script>
 </body>
 </html>
