@@ -1,5 +1,5 @@
 // Version ko v6 kar diya hai taaki purana cache delete ho jaye aur naya code install ho
-const CACHE_NAME = 'huid-camera-v9'; 
+const CACHE_NAME = 'huid-camera-v8'; 
 
 // Files jo offline hone par bhi app chalane ke liye zaroori hain
 const urlsToCache = [

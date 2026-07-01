@@ -43,13 +43,13 @@ let peer = null; let conn = null;
         localStorage.setItem('last_pc_id', pcId);
         
         document.getElementById('statusMsg').innerText = "⏳ Connecting...";
-        // 🔥 NAYA CODE: Google STUN Servers (Mobile ko PC se connect karne ke liye)
+        
         peer = new Peer({
             config: {'iceServers': [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' }
             ]}
-        }); 
+        });
 
         peer.on('open', (id) => {
             conn = peer.connect(pcId);
@@ -57,40 +57,53 @@ let peer = null; let conn = null;
             conn.on('open', () => { 
                 document.getElementById('statusMsg').innerText = "✅ Connected!"; 
                 
-                // 🔥 HEARTBEAT: Har 5 second me PC ko batayega ki mobile zinda hai
+                // 🔥 NAYA CODE: Heartbeat ke sath Silent Drop Tracker
                 if (heartbeatInterval) clearInterval(heartbeatInterval);
                 heartbeatInterval = setInterval(() => {
-                    if (conn && conn.open) { conn.send({ type: 'PING' }); }
+                    if (conn && conn.open) { 
+                        conn.send({ type: 'PING' }); 
+                    } else {
+                        // Agar connection chup chap toot gaya (Silent Drop)
+                        document.getElementById('disconnectOverlay').style.display = 'flex';
+                    }
                 }, 5000);
             });
 
             conn.on('data', (data) => {
-                if(data.type === 'SYNC_LIST') {
+                if (data.type === 'SYNC_LIST') {
                     tagsList = data.items;
                     document.getElementById('totalTagsCount').innerText = tagsList.length;
                     showScreen('modeScreen');
                 } 
                 else if (data.type === 'RETAKE_PHOTO') {
                     let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId && t.jobId === data.jobId);
-                    
                     if(targetIdx !== -1) {
                         currentIndex = targetIdx;
                         currentPhotoMode = data.photoType;
-                        
                         showScreen('cameraScreen');
                         updateUIForCurrentTag();
-                        
                         if (engineMode === 'native') {
-                            alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}\nKripya 'Open Mobile Camera' button dabayein.`);
+                            alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}`);
                         }
                     }
                 }
             });
 
+            // 🔥 NAYA CODE: PC ne connection close kar diya
             conn.on('close', () => {
                 if (heartbeatInterval) clearInterval(heartbeatInterval);
                 document.getElementById('statusMsg').innerText = "⚠️ Disconnected!";
+                document.getElementById('disconnectOverlay').style.display = 'flex'; 
             });
+        });
+
+        // 🔥 NAYA CODE: Mobile ka network/WiFi toot gaya
+        peer.on('disconnected', () => {
+            document.getElementById('disconnectOverlay').style.display = 'flex';
+        });
+        
+        peer.on('error', (err) => {
+            document.getElementById('disconnectOverlay').style.display = 'flex';
         });
     }
 

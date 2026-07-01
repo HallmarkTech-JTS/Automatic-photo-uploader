@@ -103,5 +103,12 @@
     </div>
 
     <script src="mobile.js"></script>
+<!-- 🔥 NAYA CODE: Connection Lost Alert Screen (Screen Blocker) -->
+    <div id="disconnectOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(220, 38, 38, 0.95); z-index:10000; flex-direction:column; align-items:center; justify-content:center; color:white; text-align:center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="font-size: 60px; margin-bottom: 15px;">⚠️</div>
+        <h2 style="margin: 0 0 10px 0; font-size: 28px;">Connection Lost!</h2>
+        <p style="font-size: 16px; margin-bottom: 30px; font-weight: bold; line-height: 1.5;">PC se connection toot gaya hai.<br>Kripya photo lene se pehle wapas connect karein taaki aapki mehnat waste na ho.</p>
+        <button onclick="location.reload()" style="background: white; color: #dc2626; font-size: 18px; font-weight: bold; padding: 15px 30px; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); width: 80%;">🔄 Reconnect Now</button>
+    </div>
 </body>
 </html>
