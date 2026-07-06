@@ -58,10 +58,25 @@ function connectToPC() {
         });
 
         conn.on('data', (data) => {
+            // Agar PC se Ping aati hai, toh ignore karein
+            if (data.type === 'PING') return;
+
+            // Jab data (tags list) aaye
             if (data.type === 'SYNC_LIST') {
-                tagsList = data.items;
-                document.getElementById('totalTagsCount').innerText = tagsList.length;
-                showScreen('modeScreen');
+                try {
+                    tagsList = data.items;
+                    let countElement = document.getElementById('totalTagsCount');
+                    if (countElement) countElement.innerText = tagsList.length;
+                    
+                    // 🚀 NAYA LOGIC: Data aate hi seedha Camera Screen kholo!
+                    showScreen('cameraScreen');
+                    updateUIForCurrentTag();
+                    
+                    // Mobile user ko turant alert do ki data aa gaya
+                    alert(`✅ ${tagsList.length} Job Cards Mobile me aagye hain!\nAb aap photo le sakte hain.`);
+                } catch (err) {
+                    alert("⚠️ Mobile App Code Error: " + err.message); // Agar code me koi line miss hui toh error batayega
+                }
             } 
             else if (data.type === 'RETAKE_PHOTO') {
                 let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId && t.jobId === data.jobId);
@@ -70,6 +85,7 @@ function connectToPC() {
                     currentPhotoMode = data.photoType;
                     showScreen('cameraScreen');
                     updateUIForCurrentTag();
+                    
                     if (engineMode === 'native') {
                         alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}`);
                     }
