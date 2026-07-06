@@ -1,346 +1,232 @@
-let peer = null; let conn = null; 
-    let heartbeatInterval = null; // 🔥 Connection tootne se bachane ke liye (PING)
+let peer = null;
+let conn = null;
+let tagsList = [];
+let currentIndex = 0;
+let currentPhotoMode = 'ARTICLE'; // 'ARTICLE' or 'HUID'
+let engineMode = 'native'; // 'native' or 'live'
+let heartbeatInterval = null;
+let autoSendTimeout = null;
+let autoNextTimeout = null;
+let currentStream = null;
+let cropper = null;
+let tempUncroppedB64 = null;
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+    let savedId = localStorage.getItem('last_pc_id');
+    if(savedId) document.getElementById('pcIdInput').value = savedId;
     
-    let tagsList = []; let currentIndex = 0;
-    let currentPhotoMode = 'ARTICLE'; 
-    let engineMode = 'native'; 
+    // Re-apply engine mode from local storage
+    let savedMode = localStorage.getItem('camera_engine_mode');
+    if (savedMode) engineMode = savedMode;
+});
 
-    let currentStream = null;
-    let videoDevices = [];
-    let currentDeviceIndex = 0;
-
-    // 🔥 CROP & AUTO-SEND VARIABLES
-    let cropper = null;
-    let autoSendTimeout = null;
-    let autoNextTimeout = null; 
-    let tempUncroppedB64 = "";
-
-    window.onload = function() {
-        let savedId = localStorage.getItem('last_pc_id');
-        if(savedId) document.getElementById('pcIdInput').value = savedId;
-    }
-
-    window.addEventListener('beforeunload', function (e) {
-        if (conn && conn.open) { e.preventDefault(); e.returnValue = ''; }
+// ==========================================
+// 📡 1. PEERJS & SMART DISCONNECT TRACKER
+// ==========================================
+function connectToPC() {
+    const pcId = document.getElementById('pcIdInput').value.trim().toUpperCase();
+    if(!pcId) return alert("Please enter ID!");
+    localStorage.setItem('last_pc_id', pcId);
+    
+    document.getElementById('statusMsg').innerText = "⏳ Connecting...";
+    
+    peer = new Peer({
+        config: {'iceServers': [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]}
     });
 
-    function setCameraMode(mode) {
-        engineMode = mode;
-        document.getElementById('btnNative').classList.remove('active');
-        document.getElementById('btnLive').classList.remove('active');
+    peer.on('open', (id) => {
+        conn = peer.connect(pcId);
         
-        if (mode === 'native') {
-            document.getElementById('btnNative').classList.add('active');
-        } else {
-            document.getElementById('btnLive').classList.add('active');
-            loadCameraDevices(); 
-        }
-    }
-
-    function connectToPC() {
-        const pcId = document.getElementById('pcIdInput').value.trim().toUpperCase();
-        if(!pcId) return alert("Please enter ID!");
-        localStorage.setItem('last_pc_id', pcId);
-        
-        document.getElementById('statusMsg').innerText = "⏳ Connecting...";
-        
-        peer = new Peer({
-            config: {'iceServers': [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]}
-        });
-
-        peer.on('open', (id) => {
-            conn = peer.connect(pcId);
+        conn.on('open', () => { 
+            document.getElementById('statusMsg').innerText = "✅ Connected!"; 
             
-            conn.on('open', () => { 
-                document.getElementById('statusMsg').innerText = "✅ Connected!"; 
-                
-                // 🔥 NAYA CODE: Heartbeat ke sath Silent Drop Tracker
-                if (heartbeatInterval) clearInterval(heartbeatInterval);
-                heartbeatInterval = setInterval(() => {
+            // 🔥 SMART TRACKER: Jab user camera use kar raha ho, tab false alarm nahi dega
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(() => {
+                if (document.visibilityState === 'visible') { // Sirf tab check karega jab browser screen par ho
                     if (conn && conn.open) { 
                         conn.send({ type: 'PING' }); 
                     } else {
-                        // Agar connection chup chap toot gaya (Silent Drop)
                         document.getElementById('disconnectOverlay').style.display = 'flex';
                     }
-                }, 5000);
-            });
+                }
+            }, 5000);
+        });
 
-            conn.on('data', (data) => {
-                if (data.type === 'SYNC_LIST') {
-                    tagsList = data.items;
-                    document.getElementById('totalTagsCount').innerText = tagsList.length;
-                    showScreen('modeScreen');
-                } 
-                else if (data.type === 'RETAKE_PHOTO') {
-                    let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId && t.jobId === data.jobId);
-                    if(targetIdx !== -1) {
-                        currentIndex = targetIdx;
-                        currentPhotoMode = data.photoType;
-                        showScreen('cameraScreen');
-                        updateUIForCurrentTag();
-                        if (engineMode === 'native') {
-                            alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}`);
-                        }
+        conn.on('data', (data) => {
+            if (data.type === 'SYNC_LIST') {
+                tagsList = data.items;
+                document.getElementById('totalTagsCount').innerText = tagsList.length;
+                showScreen('modeScreen');
+            } 
+            else if (data.type === 'RETAKE_PHOTO') {
+                let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId && t.jobId === data.jobId);
+                if(targetIdx !== -1) {
+                    currentIndex = targetIdx;
+                    currentPhotoMode = data.photoType;
+                    showScreen('cameraScreen');
+                    updateUIForCurrentTag();
+                    if (engineMode === 'native') {
+                        alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}`);
                     }
                 }
-            });
-
-            // 🔥 NAYA CODE: PC ne connection close kar diya
-            conn.on('close', () => {
-                if (heartbeatInterval) clearInterval(heartbeatInterval);
-                document.getElementById('statusMsg').innerText = "⚠️ Disconnected!";
-                document.getElementById('disconnectOverlay').style.display = 'flex'; 
-            });
+            }
         });
 
-        // 🔥 NAYA CODE: Mobile ka network/WiFi toot gaya
-        peer.on('disconnected', () => {
-            document.getElementById('disconnectOverlay').style.display = 'flex';
+        conn.on('close', () => {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            document.getElementById('statusMsg').innerText = "⚠️ Disconnected!";
+            document.getElementById('disconnectOverlay').style.display = 'flex'; 
         });
-        
-        peer.on('error', (err) => {
-            document.getElementById('disconnectOverlay').style.display = 'flex';
-        });
-    }
-
-    function startWorkflow(mode) {
-        if(tagsList.length === 0) return alert("List khali hai!");
-        currentPhotoMode = mode;
-        currentIndex = 0; 
-        
-        let selector = document.getElementById('tagSelector');
-        selector.innerHTML = '';
-        tagsList.forEach((item, idx) => {
-            let opt = document.createElement('option');
-            opt.value = idx;
-            opt.innerText = `${idx + 1}. ${item.tagId} (${item.jobId})`;
-            selector.appendChild(opt);
-        });
-
-        showScreen('cameraScreen');
-        updateUIForCurrentTag();
-    }
-
-    window.jumpToTag = function(idx) {
-        currentIndex = parseInt(idx);
-        updateUIForCurrentTag();
-    }
-
-    function updateUIForCurrentTag() {
-        if (currentIndex >= tagsList.length) {
-            alert(`🎉 ${currentPhotoMode} mode complete!`);
-            goBackToMode(); return;
-        }
-
-        let item = tagsList[currentIndex];
-        document.getElementById('modeDisplay').innerText = currentPhotoMode;
-        document.getElementById('progressDisplay').innerText = `${currentIndex + 1} / ${tagsList.length}`;
-        document.getElementById('currentTag').innerText = item.tagId;
-        document.getElementById('currentJob').innerText = item.jobId;
-        
-        document.getElementById('tagSelector').value = currentIndex;
-        resetUI();
-
-        if (engineMode === 'live') {
-            startLiveStream();
-        } else {
-            document.getElementById('btnTriggerNative').style.display = 'block';
-            document.getElementById('placeholderBox').style.display = 'flex';
-        }
-    }
-
-    function resetUI() {
-        document.getElementById('previewImage').style.display = 'none';
-        document.getElementById('videoElement').style.display = 'none';
-        document.getElementById('placeholderBox').style.display = 'none';
-        
-        document.getElementById('captureControls').style.display = 'block';
-        document.getElementById('actionControls').style.display = 'none';
-        
-        document.getElementById('btnTriggerNative').style.display = 'none';
-        document.getElementById('btnTriggerLive').style.display = 'none';
-        document.getElementById('btnSwitchLens').style.display = 'none';
-        document.getElementById('nativeCameraInput').value = "";
-    }
-
-    // =====================================
-    // 🚀 NATIVE CAMERA: AUTO-SEND & CROP ENGINE
-    // =====================================
-    document.getElementById('nativeCameraInput').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        let currentBtn = document.getElementById('btnTriggerNative');
-        let originalText = currentBtn.innerHTML;
-        currentBtn.innerHTML = "⏳ Processing...";
-        currentBtn.disabled = true;
-
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const img = new Image();
-            img.onload = function() {
-                const canvas = document.createElement('canvas');
-                let w = img.width, h = img.height;
-                if (w > 1024) { h *= 1024/w; w = 1024; }
-                canvas.width = w; canvas.height = h;
-                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                
-                tempUncroppedB64 = canvas.toDataURL('image/jpeg', 0.80); 
-                
-                // Preview dikhao
-                document.getElementById('previewImage').src = tempUncroppedB64;
-                document.getElementById('previewImage').style.display = 'block';
-                document.getElementById('videoElement').style.display = 'none';
-                document.getElementById('placeholderBox').style.display = 'none';
-                
-                document.getElementById('captureControls').style.display = 'none';
-                document.getElementById('actionControls').style.display = 'flex';
-                
-                // Retake & Crop Buttons (1.2 sec ke window ke liye)
-                document.getElementById('actionControls').innerHTML = `
-                    <button onclick="triggerRetake()" style="flex:1; background:#ef4444; color:white; font-size:14px; font-weight:bold; padding:12px; border:none; border-radius:8px;">🔄 Retake</button>
-                    <button onclick="openCropScreen()" style="flex:1; background:#f59e0b; color:black; font-size:14px; font-weight:bold; padding:12px; border:none; border-radius:8px;">✂️ Crop Photo</button>
-                `;
-
-                // 🔥 1.2 Second Auto-Send Timer
-                if (autoSendTimeout) clearTimeout(autoSendTimeout);
-                autoSendTimeout = setTimeout(() => {
-                    autoSendAndNext();
-                }, 1600); 
-
-                setTimeout(() => {
-                    currentBtn.innerHTML = originalText;
-                    currentBtn.disabled = false;
-                }, 500);
-            };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
     });
 
-    // ⏩ BINA CROP KIYE AUTO-SEND
-    window.autoSendAndNext = function() {
-        if (!tempUncroppedB64) return;
+    // Background Sleep mode detected (Silent reconnect, no Red Screen)
+    peer.on('disconnected', () => {
+        console.log("Background Sleep mode detected. Silent reconnecting...");
+        peer.reconnect();
+    });
+    
+    peer.on('error', (err) => {
+        if (!conn || !conn.open) {
+            document.getElementById('disconnectOverlay').style.display = 'flex';
+        }
+    });
+}
+
+// ==========================================
+// 📺 2. UI NAVIGATION & ENGINE SWITCHER
+// ==========================================
+function showScreen(screenId) {
+    document.getElementById('idScreen').style.display = 'none';
+    document.getElementById('modeScreen').style.display = 'none';
+    document.getElementById('cameraScreen').style.display = 'none';
+    document.getElementById('cropScreen').style.display = 'none';
+    document.getElementById(screenId).style.display = 'flex';
+}
+
+function setEngineMode(mode) {
+    engineMode = mode;
+    localStorage.setItem('camera_engine_mode', mode);
+    showScreen('cameraScreen');
+    updateUIForCurrentTag();
+}
+
+function toggleEngineMode() {
+    engineMode = (engineMode === 'native') ? 'live' : 'native';
+    localStorage.setItem('camera_engine_mode', engineMode);
+    updateUIForCurrentTag();
+}
+
+function updateUIForCurrentTag() {
+    if(currentIndex >= tagsList.length) {
+        alert("🎉 All Tags Completed!");
+        showScreen('idScreen');
+        return;
+    }
+    
+    let item = tagsList[currentIndex];
+    document.getElementById('jobIdDisplay').innerText = item.jobId;
+    document.getElementById('tagIdDisplay').innerText = item.tagId;
+    document.getElementById('photoTypeDisplay').innerText = currentPhotoMode === 'ARTICLE' ? "📸 ARTICLE" : "🔍 HUID";
+    
+    let progress = Math.round(((currentIndex) / tagsList.length) * 100);
+    document.getElementById('progressBar').style.width = progress + '%';
+
+    document.getElementById('previewImage').style.display = 'none';
+    document.getElementById('placeholderBox').style.display = 'flex';
+    
+    // Reset Action Controls to Native Camera Input button
+    document.getElementById('actionControls').style.display = 'none';
+    document.getElementById('nativeCameraInput').value = "";
+    
+    if (engineMode === 'live') {
+        document.getElementById('nativeCameraInput').style.display = 'none';
+        document.getElementById('videoElement').style.display = 'block';
+        document.getElementById('captureControls').style.display = 'flex';
+        document.getElementById('modeToggleBtn').innerText = "Switch to Native Camera";
         
-        document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending automatically...</div>`;
-        
-        if (conn && conn.open) {
-            let item = tagsList[currentIndex];
-            conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: tempUncroppedB64 });
+        // 🔥 Target Box sirf HUID photo ke waqt dikhega (Live Camera Mode)
+        let targetBox = document.getElementById('targetOverlay');
+        if(targetBox) {
+            targetBox.style.display = (currentPhotoMode === 'HUID') ? 'flex' : 'none';
         }
         
-        document.getElementById('nativeCameraInput').value = "";
-        setTimeout(() => { nextTag(); }, 500); // Send hone ke aadhe second baad Next Tag
-    };
+        startLiveCamera();
+    } else {
+        document.getElementById('nativeCameraInput').style.display = 'block';
+        document.getElementById('videoElement').style.display = 'none';
+        document.getElementById('captureControls').style.display = 'none';
+        document.getElementById('modeToggleBtn').innerText = "Switch to Live Camera";
+        
+        let targetBox = document.getElementById('targetOverlay');
+        if(targetBox) targetBox.style.display = 'none'; // Native me box hide karo
+        
+        stopLiveCamera();
+    }
+}
 
-    // ✂️ TIMER ROKO AUR CROP SCREEN KHOLO
-    window.openCropScreen = function() {
-        if (autoSendTimeout) clearTimeout(autoSendTimeout); // Auto Send Rok Do!
-        
-        document.getElementById('cropImage').src = tempUncroppedB64;
-        document.getElementById('cropScreen').style.display = 'flex';
-        
-        if(cropper) cropper.destroy();
-        cropper = new Cropper(document.getElementById('cropImage'), {
-            viewMode: 1,
-            autoCropArea: 0.9,
-            movable: true,
-            zoomable: true,
-            rotatable: false,
-            scalable: false
+// ==========================================
+// 📸 3. LIVE CAMERA & AUTO-CROP LOGIC
+// ==========================================
+async function startLiveCamera() {
+    stopLiveCamera();
+    try {
+        currentStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
         });
-    };
-
-    // ❌ CROP CANCEL (Wapas Camera)
-    window.cancelCrop = function() {
-        document.getElementById('cropScreen').style.display = 'none';
-        if(cropper) cropper.destroy();
-        document.getElementById('nativeCameraInput').value = ""; 
-        triggerRetake();
-    };
-
-    // ✅ CROP & SEND
-    window.applyCropAndSend = function() {
-        if(!cropper) return;
-        
-        document.getElementById('cropScreen').style.display = 'none';
-        document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending cropped photo...</div>`;
-        
-        let canvas = cropper.getCroppedCanvas({
-            maxWidth: 1024,
-            maxHeight: 1024,
-            imageSmoothingEnabled: true,
-            imageSmoothingQuality: 'high',
-        });
-        let b64 = canvas.toDataURL('image/jpeg', 0.80); 
-        
-        if (conn && conn.open) {
-            let item = tagsList[currentIndex];
-            conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 });
-        }
-        
-        cropper.destroy();
-        cropper = null;
-        document.getElementById('nativeCameraInput').value = "";
-        
-        setTimeout(() => { nextTag(); }, 500); // Send hone ke baad Next
-    };
-
-    // =====================================
-    // LIVE CAMERA ENGINE LOGIC (Fallbacks)
-    // =====================================
-    async function loadCameraDevices() {
-        try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            videoDevices = devices.filter(d => d.kind === 'videoinput');
-        } catch (err) {}
+        document.getElementById('videoElement').srcObject = currentStream;
+        document.getElementById('placeholderBox').style.display = 'none';
+    } catch (err) {
+        alert("Camera access denied or error: " + err.message);
+        toggleEngineMode(); 
     }
+}
 
-    async function startLiveStream() {
-        if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); }
-        
-        let isMobile = /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        let constraints = isMobile ? { video: { facingMode: "environment" } } : { video: true };
-        if (videoDevices.length > 0) { constraints = { video: { deviceId: { exact: videoDevices[currentDeviceIndex].deviceId } } }; }
-
-        try {
-            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-            let video = document.getElementById('videoElement');
-            video.srcObject = currentStream;
-            video.style.display = 'block';
-            
-            document.getElementById('btnTriggerLive').style.display = 'block';
-            if(videoDevices.length > 1) document.getElementById('btnSwitchLens').style.display = 'inline-block';
-        } catch (error) {
-            alert("Camera not found or blocked. Make sure URL is secure (https/localhost).");
-        }
+function stopLiveCamera() {
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
     }
+}
 
-    function switchLiveCamera() {
-        if (videoDevices.length > 1) {
-            currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
-            startLiveStream();
-        }
+function captureLiveFrame() {
+    if (!currentStream) return;
+    const video = document.getElementById('videoElement');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    
+    // 🔥 Smart Auto-Crop Logic for HUID
+    if (currentPhotoMode === 'HUID') {
+        const size = Math.min(vw, vh) * 0.6; 
+        const startX = (vw - size) / 2;
+        const startY = (vh - size) / 2;
+        
+        canvas.width = size;
+        canvas.height = size;
+        ctx.drawImage(video, startX, startY, size, size, 0, 0, size, size);
+    } else {
+        canvas.width = vw; 
+        canvas.height = vh;
+        ctx.drawImage(video, 0, 0, vw, vh);
     }
-
-    function captureLiveFrame() {
-        if (!currentStream) return;
-        const video = document.getElementById('videoElement');
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Live camera me bina crop ke direct bhejne ka logic (Fast mode)
-        let b64 = canvas.toDataURL('image/jpeg', 0.70);
-        
+    
+    let b64 = canvas.toDataURL('image/jpeg', 0.80);
+    
+    // 🔥 Check Connection Before Send
+    if (conn && conn.open) {
         document.getElementById('previewImage').src = b64;
         document.getElementById('previewImage').style.display = 'block';
         document.getElementById('videoElement').style.display = 'none';
-        document.getElementById('placeholderBox').style.display = 'none';
+        
+        let targetBox = document.getElementById('targetOverlay');
+        if(targetBox) targetBox.style.display = 'none'; 
         
         document.getElementById('captureControls').style.display = 'none';
         document.getElementById('actionControls').style.display = 'flex'; 
@@ -350,10 +236,8 @@ let peer = null; let conn = null;
             <div style="flex:1; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">✅ Sending...</div>
         `;
 
-        if (conn && conn.open) {
-            let item = tagsList[currentIndex];
-            conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 });
-        }
+        let item = tagsList[currentIndex];
+        conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 });
 
         if(autoNextTimeout) clearTimeout(autoNextTimeout); 
         autoNextTimeout = setTimeout(() => {
@@ -361,35 +245,113 @@ let peer = null; let conn = null;
                 nextTag(); 
             }
         }, 1200); 
+    } else {
+        document.getElementById('disconnectOverlay').style.display = 'flex';
     }
+}
 
-    function triggerRetake() {
-        // 🔥 Agar dukaandaar ne Retake daba diya toh Auto-Send aur Auto-Next dono rok do
-        if(autoNextTimeout) clearTimeout(autoNextTimeout); 
-        if(autoSendTimeout) clearTimeout(autoSendTimeout); 
+// ==========================================
+// ✂️ 4. NATIVE CAMERA & CROPPER
+// ==========================================
+function handleNativeCameraUpload(event) {
+    let file = event.target.files[0];
+    if(!file) return;
+
+    let reader = new FileReader();
+    reader.onload = function(e) {
+        tempUncroppedB64 = e.target.result;
         
-        resetUI();
-        if(engineMode === 'native') document.getElementById('nativeCameraInput').click();
-        else startLiveStream();
-    }
-    
-    function nextTag() { currentIndex++; updateUIForCurrentTag(); }
-    
-    function showScreen(id) {
-        document.querySelectorAll('#connectScreen, #modeScreen, #cameraScreen').forEach(el => el.style.display = 'none');
-        document.getElementById(id).style.display = 'block';
-        if(id !== 'cameraScreen' && currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
-    }
-    
-    function goBackToMode() { showScreen('modeScreen'); }
-    
-    function disconnect() { 
-        if(heartbeatInterval) clearInterval(heartbeatInterval); 
-        if(peer) peer.destroy(); 
-        location.reload(); 
-    }
+        document.getElementById('cropImage').src = tempUncroppedB64;
+        showScreen('cropScreen');
+        initCropper();
+        
+        document.getElementById('autoSendTimerText').innerText = "Sending in 3s...";
+        
+        // 🔥 Time badha kar 3000ms (3 seconds) kar diya gaya hai
+        if (autoSendTimeout) clearTimeout(autoSendTimeout);
+        autoSendTimeout = setTimeout(() => {
+            autoSendAndNext();
+        }, 3000); 
+    };
+    reader.readAsDataURL(file);
+}
 
-    // Service Worker for PWA Offline Capability
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./service-worker.js').catch(err => console.log(err));
+document.getElementById('nativeCameraInput').addEventListener('change', handleNativeCameraUpload);
+
+function initCropper() {
+    let image = document.getElementById('cropImage');
+    if(cropper) { cropper.destroy(); }
+    cropper = new Cropper(image, {
+        viewMode: 2,
+        autoCropArea: 0.8,
+        responsive: true,
+        background: false,
+        modal: true
+    });
+}
+
+// ⏩ BINA CROP KIYE AUTO-SEND
+window.autoSendAndNext = function() {
+    if (!tempUncroppedB64) return;
+    
+    // 🔥 Check Connection Before Send
+    if (conn && conn.open) {
+        document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending automatically...</div>`;
+        
+        let item = tagsList[currentIndex];
+        conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: tempUncroppedB64 });
+        
+        document.getElementById('nativeCameraInput').value = "";
+        setTimeout(() => { showScreen('cameraScreen'); nextTag(); }, 500); 
+    } else {
+        document.getElementById('disconnectOverlay').style.display = 'flex';
     }
+};
+
+// ✅ CROP & SEND
+window.applyCropAndSend = function() {
+    if(autoSendTimeout) clearTimeout(autoSendTimeout);
+    if(!cropper) return;
+    
+    // 🔥 Check Connection Before Send
+    if (conn && conn.open) {
+        document.getElementById('cropScreen').style.display = 'none';
+        document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending cropped photo...</div>`;
+        
+        let canvas = cropper.getCroppedCanvas({
+            maxWidth: 1024, maxHeight: 1024, imageSmoothingEnabled: true, imageSmoothingQuality: 'high'
+        });
+        let b64 = canvas.toDataURL('image/jpeg', 0.80); 
+        
+        let item = tagsList[currentIndex];
+        conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 });
+        
+        cropper.destroy();
+        cropper = null;
+        document.getElementById('nativeCameraInput').value = "";
+        
+        setTimeout(() => { showScreen('cameraScreen'); nextTag(); }, 500); 
+    } else {
+        document.getElementById('disconnectOverlay').style.display = 'flex';
+    }
+};
+
+// ==========================================
+// 🔄 5. LOGIC FLOW (NEXT / RETAKE)
+// ==========================================
+function nextTag() {
+    if(autoNextTimeout) clearTimeout(autoNextTimeout);
+    
+    if(currentPhotoMode === 'ARTICLE') {
+        currentPhotoMode = 'HUID';
+    } else {
+        currentPhotoMode = 'ARTICLE';
+        currentIndex++;
+    }
+    updateUIForCurrentTag();
+}
+
+window.triggerRetake = function() {
+    if(autoNextTimeout) clearTimeout(autoNextTimeout);
+    updateUIForCurrentTag(); // Yeh apne aap box aur UI wapas le aayega
+};
