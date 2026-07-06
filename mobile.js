@@ -131,7 +131,8 @@ function updateUIForCurrentTag() {
     let item = tagsList[currentIndex];
     document.getElementById('jobIdDisplay').innerText = item.jobId;
     document.getElementById('tagIdDisplay').innerText = item.tagId;
-    document.getElementById('photoTypeDisplay').innerText = currentPhotoMode === 'ARTICLE' ? "📸 ARTICLE" : "🔍 HUID";
+    let displayHuid = (item.huidCode && item.huidCode !== "HUID") ? item.huidCode : "HUID";
+    document.getElementById('photoTypeDisplay').innerText = currentPhotoMode === 'ARTICLE' ? "📸 ARTICLE" : "🔍 " + displayHuid;
     
     let progress = Math.round(((currentIndex) / tagsList.length) * 100);
     document.getElementById('progressBar').style.width = progress + '%';
