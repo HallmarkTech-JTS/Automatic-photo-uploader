@@ -114,78 +114,72 @@ function connectToPC() {
 }
 
 // ==========================================
-// 📺 2. UI NAVIGATION & ENGINE SWITCHER
+// 📺 2. UI NAVIGATION & UI UPDATES
 // ==========================================
 function showScreen(screenId) {
-    document.getElementById('idScreen').style.display = 'none';
-    document.getElementById('modeScreen').style.display = 'none';
-    document.getElementById('cameraScreen').style.display = 'none';
-    document.getElementById('cropScreen').style.display = 'none';
-    document.getElementById(screenId).style.display = 'flex';
-}
-
-function setEngineMode(mode) {
-    engineMode = mode;
-    localStorage.setItem('camera_engine_mode', mode);
-    showScreen('cameraScreen');
-    updateUIForCurrentTag();
-}
-
-function toggleEngineMode() {
-    engineMode = (engineMode === 'native') ? 'live' : 'native';
-    localStorage.setItem('camera_engine_mode', engineMode);
-    updateUIForCurrentTag();
+    // 🔥 FIX: HTML IDs ko sahi tarike se hide karna taaki code crash na ho
+    if(document.getElementById('connectScreen')) document.getElementById('connectScreen').style.display = 'none';
+    if(document.getElementById('modeScreen')) document.getElementById('modeScreen').style.display = 'none';
+    if(document.getElementById('cameraScreen')) document.getElementById('cameraScreen').style.display = 'none';
+    if(document.getElementById('cropScreen')) document.getElementById('cropScreen').style.display = 'none';
+    
+    // Nayi screen ko dikhana
+    if(document.getElementById(screenId)) document.getElementById(screenId).style.display = 'block';
 }
 
 function updateUIForCurrentTag() {
     if(currentIndex >= tagsList.length) {
         alert("🎉 All Tags Completed!");
-        showScreen('idScreen');
+        showScreen('connectScreen');
         return;
     }
     
     let item = tagsList[currentIndex];
-    document.getElementById('jobIdDisplay').innerText = item.jobId;
-    document.getElementById('tagIdDisplay').innerText = item.tagId;
+    
+    // 🔥 FIX: HTML file ke naye IDs (currentJob, currentTag, modeDisplay) ke sath match kiya
+    if(document.getElementById('currentJob')) document.getElementById('currentJob').innerText = item.jobId;
+    if(document.getElementById('currentTag')) document.getElementById('currentTag').innerText = item.tagId;
+    
     let displayHuid = (item.huidCode && item.huidCode !== "HUID") ? item.huidCode : "HUID";
-    document.getElementById('photoTypeDisplay').innerText = currentPhotoMode === 'ARTICLE' ? "📸 ARTICLE" : "🔍 " + displayHuid;
+    if(document.getElementById('modeDisplay')) {
+        document.getElementById('modeDisplay').innerText = currentPhotoMode === 'ARTICLE' ? "📸 ARTICLE" : displayHuid;
+    }
     
-    let progress = Math.round(((currentIndex) / tagsList.length) * 100);
-    document.getElementById('progressBar').style.width = progress + '%';
+    // 🔥 FIX: progressBar ki jagah progressDisplay text ko update kiya
+    if(document.getElementById('progressDisplay')) {
+        document.getElementById('progressDisplay').innerText = `${currentIndex + 1} / ${tagsList.length}`;
+    }
 
-    document.getElementById('previewImage').style.display = 'none';
-    document.getElementById('placeholderBox').style.display = 'flex';
+    if(document.getElementById('previewImage')) document.getElementById('previewImage').style.display = 'none';
+    if(document.getElementById('placeholderBox')) document.getElementById('placeholderBox').style.display = 'flex';
     
-    // Reset Action Controls to Native Camera Input button
-    document.getElementById('actionControls').style.display = 'none';
-    document.getElementById('nativeCameraInput').value = "";
+    if(document.getElementById('actionControls')) document.getElementById('actionControls').style.display = 'none';
     
     if (engineMode === 'live') {
-        document.getElementById('nativeCameraInput').style.display = 'none';
-        document.getElementById('videoElement').style.display = 'block';
-        document.getElementById('captureControls').style.display = 'flex';
-        document.getElementById('modeToggleBtn').innerText = "Switch to Native Camera";
+        if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').style.display = 'none';
+        if(document.getElementById('videoElement')) document.getElementById('videoElement').style.display = 'block';
         
-        // 🔥 Target Box sirf HUID photo ke waqt dikhega (Live Camera Mode)
+        // Buttons ko set karna HTML ke hisab se
+        if(document.getElementById('btnTriggerNative')) document.getElementById('btnTriggerNative').style.display = 'none';
+        if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'block';
+        
         let targetBox = document.getElementById('targetOverlay');
-        if(targetBox) {
-            targetBox.style.display = (currentPhotoMode === 'HUID') ? 'flex' : 'none';
-        }
+        if(targetBox) targetBox.style.display = (currentPhotoMode === 'HUID') ? 'flex' : 'none';
         
         startLiveCamera();
     } else {
-        document.getElementById('nativeCameraInput').style.display = 'block';
-        document.getElementById('videoElement').style.display = 'none';
-        document.getElementById('captureControls').style.display = 'none';
-        document.getElementById('modeToggleBtn').innerText = "Switch to Live Camera";
+        if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').style.display = 'block';
+        if(document.getElementById('videoElement')) document.getElementById('videoElement').style.display = 'none';
+        
+        if(document.getElementById('btnTriggerNative')) document.getElementById('btnTriggerNative').style.display = 'block';
+        if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'none';
         
         let targetBox = document.getElementById('targetOverlay');
-        if(targetBox) targetBox.style.display = 'none'; // Native me box hide karo
+        if(targetBox) targetBox.style.display = 'none';
         
         stopLiveCamera();
     }
 }
-
 // ==========================================
 // 📸 3. LIVE CAMERA & AUTO-CROP LOGIC
 // ==========================================

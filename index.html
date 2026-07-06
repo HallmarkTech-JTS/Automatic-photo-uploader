@@ -69,8 +69,16 @@
             <h2 style="margin: 0; color: #ef4444;">Tag: <span id="currentTag">TAG-ID</span></h2>
             <p style="margin: 5px 0 15px 0; font-size: 14px; color: #64748b;">Job Card: <span id="currentJob">JOB-ID</span></p>
 
-            <video id="videoElement" autoplay playsinline style="display:none;"></video>
-            <img id="previewImage" style="display:none;">
+            <div style="position: relative; width: 100%; display: flex; justify-content: center; align-items: center;">
+    <video id="videoElement" autoplay playsinline style="display:none; width: 100%;"></video>
+    
+    <div id="targetOverlay" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:60vw; height:60vw; max-width:300px; max-height:300px; border:3px dashed #10b981; border-radius:12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); z-index:10; pointer-events:none; flex-direction: column; align-items: center; justify-content: center;">
+        <div style="position:absolute; top:-35px; color:#10b981; font-weight:bold; font-size:16px; text-shadow: 1px 1px 3px black; white-space:nowrap;">🔍 Place HUID Here</div>
+        <div style="width: 20px; height: 2px; background: rgba(16, 185, 129, 0.5); position: absolute;"></div>
+        <div style="width: 2px; height: 20px; background: rgba(16, 185, 129, 0.5); position: absolute;"></div>
+    </div>
+</div>
+<img id="previewImage" style="display:none;">
             
             <div id="placeholderBox">
                 <span style="font-size: 30px; margin-bottom: 10px;">📷</span>
