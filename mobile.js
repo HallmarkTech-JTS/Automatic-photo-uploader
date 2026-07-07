@@ -2,8 +2,8 @@ let peer = null;
 let conn = null;
 let tagsList = [];
 let currentIndex = 0;
-let currentPhotoMode = 'ARTICLE'; // 'ARTICLE' or 'HUID'
-let engineMode = 'native'; // 'native' or 'live'
+let currentPhotoMode = 'ARTICLE'; 
+let engineMode = 'native'; 
 let heartbeatInterval = null;
 let autoSendTimeout = null;
 let autoNextTimeout = null;
@@ -16,9 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let savedId = localStorage.getItem('last_pc_id');
     if(savedId) document.getElementById('pcIdInput').value = savedId;
     
-    // Re-apply engine mode from local storage
     let savedMode = localStorage.getItem('camera_engine_mode');
     if (savedMode) engineMode = savedMode;
+    window.setCameraMode(engineMode); 
 });
 
 // ==========================================
@@ -32,10 +32,7 @@ function connectToPC() {
     document.getElementById('statusMsg').innerText = "⏳ Connecting...";
     
     peer = new Peer({
-        config: {'iceServers': [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-        ]}
+        config: {'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]}
     });
 
     peer.on('open', (id) => {
@@ -43,42 +40,31 @@ function connectToPC() {
         
         conn.on('open', () => { 
             document.getElementById('statusMsg').innerText = "✅ Connected!"; 
-            
-            // 🔥 SMART TRACKER: Jab user camera use kar raha ho, tab false alarm nahi dega
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(() => {
-                if (document.visibilityState === 'visible') { // Sirf tab check karega jab browser screen par ho
-                    if (conn && conn.open) { 
-                        conn.send({ type: 'PING' }); 
-                    } else {
-                        document.getElementById('disconnectOverlay').style.display = 'flex';
-                    }
+                if (document.visibilityState === 'visible') { 
+                    if (conn && conn.open) { conn.send({ type: 'PING' }); } 
+                    else { document.getElementById('disconnectOverlay').style.display = 'flex'; }
                 }
             }, 5000);
         });
 
         conn.on('data', (data) => {
-            // Agar PC se Ping aati hai, toh ignore karein
             if (data.type === 'PING') return;
 
-            // Jab data (tags list) aaye
             if (data.type === 'SYNC_LIST') {
                 try {
                     tagsList = data.items;
                     let countElement = document.getElementById('totalTagsCount');
                     if (countElement) countElement.innerText = tagsList.length;
                     
-                    // List banayega
                     populateTagSelector(); 
                     
-                    // Data aate hi seedha Camera Screen kholo
-                    showScreen('cameraScreen');
-                    updateUIForCurrentTag();
+                    // 🔥 FIX: Seedha Camera ki jagah wapas Main Menu (Mode Screen) par bheja
+                    showScreen('modeScreen');
                     
-                    alert(`✅ ${tagsList.length} Job Cards Mobile me aagye hain!\nAb aap photo le sakte hain.`);
-                } catch (err) {
-                    alert("⚠️ Mobile App Code Error: " + err.message); 
-                }
+                    alert(`✅ ${tagsList.length} Job Cards Mobile me aagye hain!\nAb aap apna mode select karke photo le sakte hain.`);
+                } catch (err) { alert("⚠️ Mobile App Code Error: " + err.message); }
             } 
             else if (data.type === 'RETAKE_PHOTO') {
                 let targetIdx = tagsList.findIndex(t => t.tagId === data.tagId && t.jobId === data.jobId);
@@ -87,10 +73,7 @@ function connectToPC() {
                     currentPhotoMode = data.photoType;
                     showScreen('cameraScreen');
                     updateUIForCurrentTag();
-                    
-                    if (engineMode === 'native') {
-                        alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}`);
-                    }
+                    alert(`🔄 RETAKE COMMAND!\nJob: ${data.jobId}\nTag: ${data.tagId}\nMode: ${data.photoType}`);
                 }
             }
         });
@@ -102,21 +85,14 @@ function connectToPC() {
         });
     });
 
-    // Background Sleep mode detected (Silent reconnect, no Red Screen)
-    peer.on('disconnected', () => {
-        console.log("Background Sleep mode detected. Silent reconnecting...");
-        peer.reconnect();
-    });
-    
+    peer.on('disconnected', () => { peer.reconnect(); });
     peer.on('error', (err) => {
-        if (!conn || !conn.open) {
-            document.getElementById('disconnectOverlay').style.display = 'flex';
-        }
+        if (!conn || !conn.open) document.getElementById('disconnectOverlay').style.display = 'flex';
     });
 }
 
 // ==========================================
-// 📺 2. UI NAVIGATION & ENGINE SWITCHER
+// 📺 2. UI NAVIGATION & MAIN MENU
 // ==========================================
 function showScreen(screenId) {
     if(document.getElementById('connectScreen')) document.getElementById('connectScreen').style.display = 'none';
@@ -127,29 +103,44 @@ function showScreen(screenId) {
     if(document.getElementById(screenId)) document.getElementById(screenId).style.display = 'block';
 }
 
-function setEngineMode(mode) {
+// 🔥 FIX: Main Menu ke Buttons aur Logic
+window.setCameraMode = function(mode) {
     engineMode = mode;
     localStorage.setItem('camera_engine_mode', mode);
+    
+    if(document.getElementById('btnNative')) {
+        document.getElementById('btnNative').classList.toggle('active', mode === 'native');
+        document.getElementById('btnLive').classList.toggle('active', mode === 'live');
+    }
+};
+
+window.startWorkflow = function(mode) {
+    currentPhotoMode = mode; // 'ARTICLE' ya 'HUID'
+    currentIndex = 0; // Hamesha 1st Tag se shuru karega
     showScreen('cameraScreen');
     updateUIForCurrentTag();
-}
+};
 
-function toggleEngineMode() {
-    engineMode = (engineMode === 'native') ? 'live' : 'native';
-    localStorage.setItem('camera_engine_mode', engineMode);
-    updateUIForCurrentTag();
-}
+window.goBackToMode = function() {
+    stopLiveCamera();
+    showScreen('modeScreen');
+};
+
+window.disconnect = function() {
+    if(conn) conn.close();
+    if(peer) peer.destroy();
+    location.reload();
+};
 
 function updateUIForCurrentTag() {
     if(currentIndex >= tagsList.length) {
-        alert("🎉 All Tags Completed!");
-        showScreen('connectScreen');
+        alert(`🎉 All ${currentPhotoMode} Photos Completed!`);
+        window.goBackToMode();
         return;
     }
     
     let item = tagsList[currentIndex];
     
-    // Dropdown list ko hamesha screen ke sath sync rakhega
     let selector = document.getElementById('tagSelector');
     if (selector) selector.value = currentIndex;
     
@@ -173,7 +164,7 @@ function updateUIForCurrentTag() {
     if (engineMode === 'live') {
         if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').style.display = 'none';
         if(document.getElementById('videoElement')) document.getElementById('videoElement').style.display = 'block';
-        if(document.getElementById('captureControls')) document.getElementById('captureControls').style.display = 'block'; // Or flex if used earlier
+        if(document.getElementById('captureControls')) document.getElementById('captureControls').style.display = 'block'; 
         
         if(document.getElementById('btnTriggerNative')) document.getElementById('btnTriggerNative').style.display = 'none';
         if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'block';
@@ -210,7 +201,7 @@ async function startLiveCamera() {
         if(document.getElementById('placeholderBox')) document.getElementById('placeholderBox').style.display = 'none';
     } catch (err) {
         alert("Camera access denied or error: " + err.message);
-        toggleEngineMode(); 
+        window.setCameraMode('native'); 
     }
 }
 
@@ -230,12 +221,10 @@ window.captureLiveFrame = function() {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     
-    // Smart Auto-Crop Logic for HUID
     if (currentPhotoMode === 'HUID') {
         const size = Math.min(vw, vh) * 0.6; 
         const startX = (vw - size) / 2;
         const startY = (vh - size) / 2;
-        
         canvas.width = size;
         canvas.height = size;
         ctx.drawImage(video, startX, startY, size, size, 0, 0, size, size);
@@ -247,7 +236,6 @@ window.captureLiveFrame = function() {
     
     let b64 = canvas.toDataURL('image/jpeg', 0.80);
     
-    // Check Connection Before Send
     if (conn && conn.open) {
         if(document.getElementById('previewImage')) {
             document.getElementById('previewImage').src = b64;
@@ -296,11 +284,8 @@ function handleNativeCameraUpload(event) {
         showScreen('cropScreen');
         initCropper();
         
-        // 3-Second Timer
         if (autoSendTimeout) clearTimeout(autoSendTimeout);
-        autoSendTimeout = setTimeout(() => {
-            autoSendAndNext();
-        }, 3000); 
+        autoSendTimeout = setTimeout(() => { autoSendAndNext(); }, 3000); 
     };
     reader.readAsDataURL(file);
 }
@@ -311,24 +296,15 @@ if(nativeInput) nativeInput.addEventListener('change', handleNativeCameraUpload)
 function initCropper() {
     let image = document.getElementById('cropImage');
     if(cropper) { cropper.destroy(); }
-    cropper = new Cropper(image, {
-        viewMode: 2,
-        autoCropArea: 0.8,
-        responsive: true,
-        background: false,
-        modal: true
-    });
+    cropper = new Cropper(image, { viewMode: 2, autoCropArea: 0.8, responsive: true, background: false, modal: true });
 }
 
-// BINA CROP KIYE AUTO-SEND
 window.autoSendAndNext = function() {
     if (!tempUncroppedB64) return;
-    
     if (conn && conn.open) {
         if(document.getElementById('actionControls')) {
             document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending automatically...</div>`;
         }
-        
         let item = tagsList[currentIndex];
         conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: tempUncroppedB64 });
         
@@ -339,7 +315,6 @@ window.autoSendAndNext = function() {
     }
 };
 
-// CROP & SEND
 window.applyCropAndSend = function() {
     if(autoSendTimeout) clearTimeout(autoSendTimeout);
     if(!cropper) return;
@@ -350,16 +325,13 @@ window.applyCropAndSend = function() {
             document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending cropped photo...</div>`;
         }
         
-        let canvas = cropper.getCroppedCanvas({
-            maxWidth: 1024, maxHeight: 1024, imageSmoothingEnabled: true, imageSmoothingQuality: 'high'
-        });
+        let canvas = cropper.getCroppedCanvas({ maxWidth: 1024, maxHeight: 1024, imageSmoothingEnabled: true, imageSmoothingQuality: 'high' });
         let b64 = canvas.toDataURL('image/jpeg', 0.80); 
         
         let item = tagsList[currentIndex];
         conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 });
         
-        cropper.destroy();
-        cropper = null;
+        cropper.destroy(); cropper = null;
         if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
         
         setTimeout(() => { showScreen('cameraScreen'); nextTag(); }, 500); 
@@ -370,27 +342,25 @@ window.applyCropAndSend = function() {
 
 window.cancelCrop = function() {
     if(autoSendTimeout) clearTimeout(autoSendTimeout);
-    if(cropper) {
-        cropper.destroy();
-        cropper = null;
-    }
+    if(cropper) { cropper.destroy(); cropper = null; }
     if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
     showScreen('cameraScreen');
 };
 
 // ==========================================
-// 🔄 5. LOGIC FLOW (NEXT / RETAKE)
+// 🔄 5. LOGIC FLOW (BATCH NEXT / RETAKE)
 // ==========================================
 function nextTag() {
     if(autoNextTimeout) clearTimeout(autoNextTimeout);
     
-    if(currentPhotoMode === 'ARTICLE') {
-        currentPhotoMode = 'HUID';
+    // 🔥 FIX: Ab mode alternate nahi hoga, bas aage badhega (Batch Mode)
+    currentIndex++;
+    if(currentIndex >= tagsList.length) {
+        alert(`🎉 All ${currentPhotoMode} Photos Completed!`);
+        window.goBackToMode();
     } else {
-        currentPhotoMode = 'ARTICLE';
-        currentIndex++;
+        updateUIForCurrentTag();
     }
-    updateUIForCurrentTag();
 }
 
 window.triggerRetake = function() {
@@ -418,6 +388,5 @@ function populateTagSelector() {
 window.jumpToTag = function(index) {
     if(autoNextTimeout) clearTimeout(autoNextTimeout);
     currentIndex = parseInt(index);
-    currentPhotoMode = 'ARTICLE'; 
     updateUIForCurrentTag();
 };
