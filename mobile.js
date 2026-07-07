@@ -68,14 +68,16 @@ function connectToPC() {
                     let countElement = document.getElementById('totalTagsCount');
                     if (countElement) countElement.innerText = tagsList.length;
                     
-                    // 🚀 NAYA LOGIC: Data aate hi seedha Camera Screen kholo!
+                    // List banayega
+                    populateTagSelector(); 
+                    
+                    // Data aate hi seedha Camera Screen kholo
                     showScreen('cameraScreen');
                     updateUIForCurrentTag();
                     
-                    // Mobile user ko turant alert do ki data aa gaya
                     alert(`✅ ${tagsList.length} Job Cards Mobile me aagye hain!\nAb aap photo le sakte hain.`);
                 } catch (err) {
-                    alert("⚠️ Mobile App Code Error: " + err.message); // Agar code me koi line miss hui toh error batayega
+                    alert("⚠️ Mobile App Code Error: " + err.message); 
                 }
             } 
             else if (data.type === 'RETAKE_PHOTO') {
@@ -114,17 +116,28 @@ function connectToPC() {
 }
 
 // ==========================================
-// 📺 2. UI NAVIGATION & UI UPDATES
+// 📺 2. UI NAVIGATION & ENGINE SWITCHER
 // ==========================================
 function showScreen(screenId) {
-    // 🔥 FIX: HTML IDs ko sahi tarike se hide karna taaki code crash na ho
     if(document.getElementById('connectScreen')) document.getElementById('connectScreen').style.display = 'none';
     if(document.getElementById('modeScreen')) document.getElementById('modeScreen').style.display = 'none';
     if(document.getElementById('cameraScreen')) document.getElementById('cameraScreen').style.display = 'none';
     if(document.getElementById('cropScreen')) document.getElementById('cropScreen').style.display = 'none';
     
-    // Nayi screen ko dikhana
     if(document.getElementById(screenId)) document.getElementById(screenId).style.display = 'block';
+}
+
+function setEngineMode(mode) {
+    engineMode = mode;
+    localStorage.setItem('camera_engine_mode', mode);
+    showScreen('cameraScreen');
+    updateUIForCurrentTag();
+}
+
+function toggleEngineMode() {
+    engineMode = (engineMode === 'native') ? 'live' : 'native';
+    localStorage.setItem('camera_engine_mode', engineMode);
+    updateUIForCurrentTag();
 }
 
 function updateUIForCurrentTag() {
@@ -136,7 +149,10 @@ function updateUIForCurrentTag() {
     
     let item = tagsList[currentIndex];
     
-    // 🔥 FIX: HTML file ke naye IDs (currentJob, currentTag, modeDisplay) ke sath match kiya
+    // Dropdown list ko hamesha screen ke sath sync rakhega
+    let selector = document.getElementById('tagSelector');
+    if (selector) selector.value = currentIndex;
+    
     if(document.getElementById('currentJob')) document.getElementById('currentJob').innerText = item.jobId;
     if(document.getElementById('currentTag')) document.getElementById('currentTag').innerText = item.tagId;
     
@@ -145,21 +161,20 @@ function updateUIForCurrentTag() {
         document.getElementById('modeDisplay').innerText = currentPhotoMode === 'ARTICLE' ? "📸 ARTICLE" : displayHuid;
     }
     
-    // 🔥 FIX: progressBar ki jagah progressDisplay text ko update kiya
     if(document.getElementById('progressDisplay')) {
         document.getElementById('progressDisplay').innerText = `${currentIndex + 1} / ${tagsList.length}`;
     }
 
     if(document.getElementById('previewImage')) document.getElementById('previewImage').style.display = 'none';
     if(document.getElementById('placeholderBox')) document.getElementById('placeholderBox').style.display = 'flex';
-    
     if(document.getElementById('actionControls')) document.getElementById('actionControls').style.display = 'none';
+    if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
     
     if (engineMode === 'live') {
         if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').style.display = 'none';
         if(document.getElementById('videoElement')) document.getElementById('videoElement').style.display = 'block';
+        if(document.getElementById('captureControls')) document.getElementById('captureControls').style.display = 'block'; // Or flex if used earlier
         
-        // Buttons ko set karna HTML ke hisab se
         if(document.getElementById('btnTriggerNative')) document.getElementById('btnTriggerNative').style.display = 'none';
         if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'block';
         
@@ -175,11 +190,12 @@ function updateUIForCurrentTag() {
         if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'none';
         
         let targetBox = document.getElementById('targetOverlay');
-        if(targetBox) targetBox.style.display = 'none';
+        if(targetBox) targetBox.style.display = 'none'; 
         
         stopLiveCamera();
     }
 }
+
 // ==========================================
 // 📸 3. LIVE CAMERA & AUTO-CROP LOGIC
 // ==========================================
@@ -189,8 +205,9 @@ async function startLiveCamera() {
         currentStream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
         });
-        document.getElementById('videoElement').srcObject = currentStream;
-        document.getElementById('placeholderBox').style.display = 'none';
+        let videoElement = document.getElementById('videoElement');
+        if(videoElement) videoElement.srcObject = currentStream;
+        if(document.getElementById('placeholderBox')) document.getElementById('placeholderBox').style.display = 'none';
     } catch (err) {
         alert("Camera access denied or error: " + err.message);
         toggleEngineMode(); 
@@ -204,7 +221,7 @@ function stopLiveCamera() {
     }
 }
 
-function captureLiveFrame() {
+window.captureLiveFrame = function() {
     if (!currentStream) return;
     const video = document.getElementById('videoElement');
     const canvas = document.createElement('canvas');
@@ -213,7 +230,7 @@ function captureLiveFrame() {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     
-    // 🔥 Smart Auto-Crop Logic for HUID
+    // Smart Auto-Crop Logic for HUID
     if (currentPhotoMode === 'HUID') {
         const size = Math.min(vw, vh) * 0.6; 
         const startX = (vw - size) / 2;
@@ -230,36 +247,39 @@ function captureLiveFrame() {
     
     let b64 = canvas.toDataURL('image/jpeg', 0.80);
     
-    // 🔥 Check Connection Before Send
+    // Check Connection Before Send
     if (conn && conn.open) {
-        document.getElementById('previewImage').src = b64;
-        document.getElementById('previewImage').style.display = 'block';
-        document.getElementById('videoElement').style.display = 'none';
+        if(document.getElementById('previewImage')) {
+            document.getElementById('previewImage').src = b64;
+            document.getElementById('previewImage').style.display = 'block';
+        }
+        if(document.getElementById('videoElement')) document.getElementById('videoElement').style.display = 'none';
         
         let targetBox = document.getElementById('targetOverlay');
         if(targetBox) targetBox.style.display = 'none'; 
         
-        document.getElementById('captureControls').style.display = 'none';
-        document.getElementById('actionControls').style.display = 'flex'; 
-        
-        document.getElementById('actionControls').innerHTML = `
-            <button onclick="triggerRetake()" style="flex:1; background:#ef4444; color:white; font-size:14px; font-weight:bold; padding:12px; border:none; border-radius:8px;">🔄 Retake</button>
-            <div style="flex:1; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">✅ Sending...</div>
-        `;
+        if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'none';
+        if(document.getElementById('actionControls')) {
+            document.getElementById('actionControls').style.display = 'flex'; 
+            document.getElementById('actionControls').innerHTML = `
+                <button onclick="triggerRetake()" style="flex:1; background:#ef4444; color:white; font-size:14px; font-weight:bold; padding:12px; border:none; border-radius:8px;">🔄 Retake</button>
+                <div style="flex:1; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">✅ Sending...</div>
+            `;
+        }
 
         let item = tagsList[currentIndex];
         conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 });
 
         if(autoNextTimeout) clearTimeout(autoNextTimeout); 
         autoNextTimeout = setTimeout(() => {
-            if (document.getElementById('previewImage').style.display === 'block') {
+            if (document.getElementById('previewImage') && document.getElementById('previewImage').style.display === 'block') {
                 nextTag(); 
             }
         }, 1200); 
     } else {
-        document.getElementById('disconnectOverlay').style.display = 'flex';
+        if(document.getElementById('disconnectOverlay')) document.getElementById('disconnectOverlay').style.display = 'flex';
     }
-}
+};
 
 // ==========================================
 // ✂️ 4. NATIVE CAMERA & CROPPER
@@ -272,13 +292,11 @@ function handleNativeCameraUpload(event) {
     reader.onload = function(e) {
         tempUncroppedB64 = e.target.result;
         
-        document.getElementById('cropImage').src = tempUncroppedB64;
+        if(document.getElementById('cropImage')) document.getElementById('cropImage').src = tempUncroppedB64;
         showScreen('cropScreen');
         initCropper();
         
-        document.getElementById('autoSendTimerText').innerText = "Sending in 3s...";
-        
-        // 🔥 Time badha kar 3000ms (3 seconds) kar diya gaya hai
+        // 3-Second Timer
         if (autoSendTimeout) clearTimeout(autoSendTimeout);
         autoSendTimeout = setTimeout(() => {
             autoSendAndNext();
@@ -287,7 +305,8 @@ function handleNativeCameraUpload(event) {
     reader.readAsDataURL(file);
 }
 
-document.getElementById('nativeCameraInput').addEventListener('change', handleNativeCameraUpload);
+let nativeInput = document.getElementById('nativeCameraInput');
+if(nativeInput) nativeInput.addEventListener('change', handleNativeCameraUpload);
 
 function initCropper() {
     let image = document.getElementById('cropImage');
@@ -301,33 +320,35 @@ function initCropper() {
     });
 }
 
-// ⏩ BINA CROP KIYE AUTO-SEND
+// BINA CROP KIYE AUTO-SEND
 window.autoSendAndNext = function() {
     if (!tempUncroppedB64) return;
     
-    // 🔥 Check Connection Before Send
     if (conn && conn.open) {
-        document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending automatically...</div>`;
+        if(document.getElementById('actionControls')) {
+            document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending automatically...</div>`;
+        }
         
         let item = tagsList[currentIndex];
         conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: tempUncroppedB64 });
         
-        document.getElementById('nativeCameraInput').value = "";
+        if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
         setTimeout(() => { showScreen('cameraScreen'); nextTag(); }, 500); 
     } else {
-        document.getElementById('disconnectOverlay').style.display = 'flex';
+        if(document.getElementById('disconnectOverlay')) document.getElementById('disconnectOverlay').style.display = 'flex';
     }
 };
 
-// ✅ CROP & SEND
+// CROP & SEND
 window.applyCropAndSend = function() {
     if(autoSendTimeout) clearTimeout(autoSendTimeout);
     if(!cropper) return;
     
-    // 🔥 Check Connection Before Send
     if (conn && conn.open) {
-        document.getElementById('cropScreen').style.display = 'none';
-        document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending cropped photo...</div>`;
+        if(document.getElementById('cropScreen')) document.getElementById('cropScreen').style.display = 'none';
+        if(document.getElementById('actionControls')) {
+            document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending cropped photo...</div>`;
+        }
         
         let canvas = cropper.getCroppedCanvas({
             maxWidth: 1024, maxHeight: 1024, imageSmoothingEnabled: true, imageSmoothingQuality: 'high'
@@ -339,12 +360,22 @@ window.applyCropAndSend = function() {
         
         cropper.destroy();
         cropper = null;
-        document.getElementById('nativeCameraInput').value = "";
+        if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
         
         setTimeout(() => { showScreen('cameraScreen'); nextTag(); }, 500); 
     } else {
-        document.getElementById('disconnectOverlay').style.display = 'flex';
+        if(document.getElementById('disconnectOverlay')) document.getElementById('disconnectOverlay').style.display = 'flex';
     }
+};
+
+window.cancelCrop = function() {
+    if(autoSendTimeout) clearTimeout(autoSendTimeout);
+    if(cropper) {
+        cropper.destroy();
+        cropper = null;
+    }
+    if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
+    showScreen('cameraScreen');
 };
 
 // ==========================================
@@ -364,5 +395,29 @@ function nextTag() {
 
 window.triggerRetake = function() {
     if(autoNextTimeout) clearTimeout(autoNextTimeout);
-    updateUIForCurrentTag(); // Yeh apne aap box aur UI wapas le aayega
+    updateUIForCurrentTag(); 
+};
+
+// ==========================================
+// 🗂️ 6. TAG SELECTOR LIST (Dropdown)
+// ==========================================
+function populateTagSelector() {
+    let selector = document.getElementById('tagSelector');
+    if (!selector) return;
+    selector.innerHTML = ""; 
+    
+    tagsList.forEach((item, index) => {
+        let opt = document.createElement('option');
+        opt.value = index;
+        let displayHuid = (item.huidCode && item.huidCode !== "HUID") ? item.huidCode : "HUID";
+        opt.innerText = `${index + 1}. Job: ${item.jobId} | Tag: ${item.tagId} (${displayHuid})`;
+        selector.appendChild(opt);
+    });
+}
+
+window.jumpToTag = function(index) {
+    if(autoNextTimeout) clearTimeout(autoNextTimeout);
+    currentIndex = parseInt(index);
+    currentPhotoMode = 'ARTICLE'; 
+    updateUIForCurrentTag();
 };
