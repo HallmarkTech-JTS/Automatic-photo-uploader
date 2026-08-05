@@ -170,7 +170,8 @@ function updateUIForCurrentTag() {
         if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'block';
         
         let targetBox = document.getElementById('targetOverlay');
-        if(targetBox) targetBox.style.display = (currentPhotoMode === 'HUID') ? 'flex' : 'none';
+        // 🔥 NAYA FIX: Live Camera me HUID wala Green box hamesha hide rahega
+        if(targetBox) targetBox.style.display = 'none'; 
         
         startLiveCamera();
     } else {
@@ -221,18 +222,10 @@ window.captureLiveFrame = function() {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     
-    if (currentPhotoMode === 'HUID') {
-        const size = Math.min(vw, vh) * 0.6; 
-        const startX = (vw - size) / 2;
-        const startY = (vh - size) / 2;
-        canvas.width = size;
-        canvas.height = size;
-        ctx.drawImage(video, startX, startY, size, size, 0, 0, size, size);
-    } else {
-        canvas.width = vw; 
-        canvas.height = vh;
-        ctx.drawImage(video, 0, 0, vw, vh);
-    }
+    // 🔥 NAYA FIX: Live camera me chahe Article ho ya HUID, poori (Full) photo hi click hogi
+    canvas.width = vw; 
+    canvas.height = vh;
+    ctx.drawImage(video, 0, 0, vw, vh);
     
     let b64 = canvas.toDataURL('image/jpeg', 0.80);
     
