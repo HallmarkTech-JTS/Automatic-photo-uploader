@@ -11,6 +11,16 @@ let currentStream = null;
 let cropper = null;
 let tempUncroppedB64 = null;
 
+let offlinePhotoQueue = []; 
+let wakeLock = null; 
+let deferredPrompt; 
+
+// 🔥 PWA Install App Logic (Smart Button Setup)
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e; 
+});
+
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
     let savedId = localStorage.getItem('last_pc_id');
@@ -19,34 +29,92 @@ document.addEventListener('DOMContentLoaded', () => {
     let savedMode = localStorage.getItem('camera_engine_mode');
     if (savedMode) engineMode = savedMode;
     window.setCameraMode(engineMode); 
+
+    // 🔥 SMART INSTALL BUTTON LOGIC
+    const installBtn = document.getElementById('btnInstallApp');
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    
+    if (isStandalone) {
+        if(installBtn) installBtn.style.display = 'none'; // App install ho chuki hai, hide karo
+    } else {
+        if(installBtn) {
+            installBtn.style.display = 'block'; // Browser me hai, button samne dikhao
+            installBtn.addEventListener('click', async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') { installBtn.style.display = 'none'; }
+                    deferredPrompt = null;
+                } else {
+                    // Agar iPhone hai ya Chrome popup support nahi kar raha
+                    alert("📲 INSTALL APP MANUAL GUIDE:\n\n1. ANDROID: Upar 3-dots (⋮) dabayein aur 'Install App' ya 'Add to Home Screen' slect karein.\n\n2. IPHONE (Safari): Niche 'Share' icon (teer) dabayein aur 'Add to Home Screen' slect karein.");
+                }
+            });
+        }
+    }
 });
 
+// Screen ko sleep hone se rokna
+async function keepScreenAwake() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            document.addEventListener('visibilitychange', async () => {
+                if (wakeLock !== null && document.visibilityState === 'visible') {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            });
+        }
+    } catch (err) { console.log("WakeLock not supported"); }
+}
+
 // ==========================================
-// 📡 1. PEERJS & SMART DISCONNECT TRACKER
+// 📡 1. PRO-LEVEL AUTO-RECONNECT ENGINE
 // ==========================================
-function connectToPC() {
+function connectToPC(isAutoReconnect = false) {
     const pcId = document.getElementById('pcIdInput').value.trim().toUpperCase();
     if(!pcId) return alert("Please enter ID!");
     localStorage.setItem('last_pc_id', pcId);
     
-    document.getElementById('statusMsg').innerText = "⏳ Connecting...";
+    let statusEl = document.getElementById('statusMsg');
+    statusEl.innerText = isAutoReconnect ? "🔄 Auto-Reconnecting..." : "⏳ Connecting...";
+    statusEl.style.color = isAutoReconnect ? "#2563eb" : "#d97706";
     
+    if(peer) peer.destroy(); 
+
     peer = new Peer({
-        config: {'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]}
+        config: {'iceServers': [
+            { urls: 'stun:stun.l.google.com:19302' }, 
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' }
+        ]}
     });
 
     peer.on('open', (id) => {
-        conn = peer.connect(pcId);
+        conn = peer.connect(pcId, { reliable: true }); 
         
         conn.on('open', () => { 
-            document.getElementById('statusMsg').innerText = "✅ Connected!"; 
+            statusEl.innerText = "✅ Connected!"; 
+            statusEl.style.color = "#16a34a";
+            
+            document.getElementById('disconnectOverlay').style.display = 'none'; 
+            keepScreenAwake(); 
+
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(() => {
-                if (document.visibilityState === 'visible') { 
-                    if (conn && conn.open) { conn.send({ type: 'PING' }); } 
-                    else { document.getElementById('disconnectOverlay').style.display = 'flex'; }
-                }
-            }, 5000);
+                if (conn && conn.open) { conn.send({ type: 'PING' }); } 
+            }, 3000); 
+
+            if (offlinePhotoQueue.length > 0) {
+                let delay = 0;
+                offlinePhotoQueue.forEach(p => {
+                    setTimeout(() => { if(conn && conn.open) conn.send(p); }, delay);
+                    delay += 500; 
+                });
+                alert(`✅ ${offlinePhotoQueue.length} Pending (ruki hui) photos PC par bhej di gayi hain!`);
+                offlinePhotoQueue = []; 
+            }
         });
 
         conn.on('data', (data) => {
@@ -59,11 +127,9 @@ function connectToPC() {
                     if (countElement) countElement.innerText = tagsList.length;
                     
                     populateTagSelector(); 
-                    
-                    // 🔥 FIX: Seedha Camera ki jagah wapas Main Menu (Mode Screen) par bheja
                     showScreen('modeScreen');
                     
-                    alert(`✅ ${tagsList.length} Job Cards Mobile me aagye hain!\nAb aap apna mode select karke photo le sakte hain.`);
+                    if(!isAutoReconnect) alert(`✅ ${tagsList.length} Job Cards Mobile me aagye hain!\nAb aap apna mode select karke photo le sakte hain.`);
                 } catch (err) { alert("⚠️ Mobile App Code Error: " + err.message); }
             } 
             else if (data.type === 'RETAKE_PHOTO') {
@@ -78,17 +144,45 @@ function connectToPC() {
             }
         });
 
-        conn.on('close', () => {
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-            document.getElementById('statusMsg').innerText = "⚠️ Disconnected!";
-            document.getElementById('disconnectOverlay').style.display = 'flex'; 
-        });
+        conn.on('close', () => { triggerAutoReconnect(); });
+        conn.on('error', () => { triggerAutoReconnect(); });
     });
 
-    peer.on('disconnected', () => { peer.reconnect(); });
-    peer.on('error', (err) => {
-        if (!conn || !conn.open) document.getElementById('disconnectOverlay').style.display = 'flex';
-    });
+    peer.on('disconnected', () => { triggerAutoReconnect(); });
+    peer.on('error', (err) => { triggerAutoReconnect(); });
+}
+
+let reconnectTimer = null;
+let autoReconnectInterval = null;
+
+function triggerAutoReconnect() {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    let statusEl = document.getElementById('statusMsg');
+    if(statusEl) {
+        statusEl.innerText = "⚠️ Connection Lost! Reconnecting...";
+        statusEl.style.color = "#ef4444";
+    }
+    
+    if(!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+            if(!conn || !conn.open) {
+                let overlay = document.getElementById('disconnectOverlay');
+                if(overlay) overlay.style.display = 'flex';
+            }
+            reconnectTimer = null;
+        }, 4000);
+        
+        if(autoReconnectInterval) clearInterval(autoReconnectInterval);
+        autoReconnectInterval = setInterval(() => {
+            if(conn && conn.open) {
+                clearInterval(autoReconnectInterval);
+                return;
+            }
+            if(document.getElementById('pcIdInput').value) {
+                connectToPC(true);
+            }
+        }, 2000);
+    }
 }
 
 // ==========================================
@@ -103,7 +197,6 @@ function showScreen(screenId) {
     if(document.getElementById(screenId)) document.getElementById(screenId).style.display = 'block';
 }
 
-// 🔥 FIX: Main Menu ke Buttons aur Logic
 window.setCameraMode = function(mode) {
     engineMode = mode;
     localStorage.setItem('camera_engine_mode', mode);
@@ -115,8 +208,8 @@ window.setCameraMode = function(mode) {
 };
 
 window.startWorkflow = function(mode) {
-    currentPhotoMode = mode; // 'ARTICLE' ya 'HUID'
-    currentIndex = 0; // Hamesha 1st Tag se shuru karega
+    currentPhotoMode = mode; 
+    currentIndex = 0; 
     showScreen('cameraScreen');
     updateUIForCurrentTag();
 };
@@ -170,7 +263,6 @@ function updateUIForCurrentTag() {
         if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'block';
         
         let targetBox = document.getElementById('targetOverlay');
-        // 🔥 NAYA FIX: Live Camera me HUID wala Green box hamesha hide rahega
         if(targetBox) targetBox.style.display = 'none'; 
         
         startLiveCamera();
@@ -222,24 +314,27 @@ window.captureLiveFrame = function() {
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     
-    // 🔥 NAYA FIX: Live camera me chahe Article ho ya HUID, poori (Full) photo hi click hogi
     canvas.width = vw; 
     canvas.height = vh;
     ctx.drawImage(video, 0, 0, vw, vh);
     
     let b64 = canvas.toDataURL('image/jpeg', 0.80);
     
+    if(document.getElementById('previewImage')) {
+        document.getElementById('previewImage').src = b64;
+        document.getElementById('previewImage').style.display = 'block';
+    }
+    if(document.getElementById('videoElement')) document.getElementById('videoElement').style.display = 'none';
+    
+    let targetBox = document.getElementById('targetOverlay');
+    if(targetBox) targetBox.style.display = 'none'; 
+    
+    if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'none';
+    
+    let item = tagsList[currentIndex];
+    let photoData = { type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 };
+
     if (conn && conn.open) {
-        if(document.getElementById('previewImage')) {
-            document.getElementById('previewImage').src = b64;
-            document.getElementById('previewImage').style.display = 'block';
-        }
-        if(document.getElementById('videoElement')) document.getElementById('videoElement').style.display = 'none';
-        
-        let targetBox = document.getElementById('targetOverlay');
-        if(targetBox) targetBox.style.display = 'none'; 
-        
-        if(document.getElementById('btnTriggerLive')) document.getElementById('btnTriggerLive').style.display = 'none';
         if(document.getElementById('actionControls')) {
             document.getElementById('actionControls').style.display = 'flex'; 
             document.getElementById('actionControls').innerHTML = `
@@ -247,19 +342,24 @@ window.captureLiveFrame = function() {
                 <div style="flex:1; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">✅ Sending...</div>
             `;
         }
-
-        let item = tagsList[currentIndex];
-        conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 });
-
-        if(autoNextTimeout) clearTimeout(autoNextTimeout); 
-        autoNextTimeout = setTimeout(() => {
-            if (document.getElementById('previewImage') && document.getElementById('previewImage').style.display === 'block') {
-                nextTag(); 
-            }
-        }, 1200); 
+        conn.send(photoData);
     } else {
-        if(document.getElementById('disconnectOverlay')) document.getElementById('disconnectOverlay').style.display = 'flex';
+        offlinePhotoQueue.push(photoData);
+        if(document.getElementById('actionControls')) {
+            document.getElementById('actionControls').style.display = 'flex'; 
+            document.getElementById('actionControls').innerHTML = `
+                <button onclick="triggerRetake()" style="flex:1; background:#ef4444; color:white; font-size:14px; font-weight:bold; padding:12px; border:none; border-radius:8px;">🔄 Retake</button>
+                <div style="flex:1; display:flex; align-items:center; justify-content:center; color:#f59e0b; font-weight:bold; line-height:1.2;">⚠️ Saved in Phone.<br>Waiting for PC...</div>
+            `;
+        }
     }
+
+    if(autoNextTimeout) clearTimeout(autoNextTimeout); 
+    autoNextTimeout = setTimeout(() => {
+        if (document.getElementById('previewImage') && document.getElementById('previewImage').style.display === 'block') {
+            nextTag(); 
+        }
+    }, 1500); 
 };
 
 // ==========================================
@@ -276,9 +376,6 @@ function handleNativeCameraUpload(event) {
         if(document.getElementById('cropImage')) document.getElementById('cropImage').src = tempUncroppedB64;
         showScreen('cropScreen');
         initCropper();
-        
-        if (autoSendTimeout) clearTimeout(autoSendTimeout);
-        autoSendTimeout = setTimeout(() => { autoSendAndNext(); }, 3000); 
     };
     reader.readAsDataURL(file);
 }
@@ -292,45 +389,32 @@ function initCropper() {
     cropper = new Cropper(image, { viewMode: 2, autoCropArea: 0.8, responsive: true, background: false, modal: true });
 }
 
-window.autoSendAndNext = function() {
-    if (!tempUncroppedB64) return;
-    if (conn && conn.open) {
-        if(document.getElementById('actionControls')) {
-            document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending automatically...</div>`;
-        }
-        let item = tagsList[currentIndex];
-        conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: tempUncroppedB64 });
-        
-        if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
-        setTimeout(() => { showScreen('cameraScreen'); nextTag(); }, 500); 
-    } else {
-        if(document.getElementById('disconnectOverlay')) document.getElementById('disconnectOverlay').style.display = 'flex';
-    }
-};
-
 window.applyCropAndSend = function() {
     if(autoSendTimeout) clearTimeout(autoSendTimeout);
     if(!cropper) return;
     
+    if(document.getElementById('cropScreen')) document.getElementById('cropScreen').style.display = 'none';
+    
+    let canvas = cropper.getCroppedCanvas({ maxWidth: 1024, maxHeight: 1024, imageSmoothingEnabled: true, imageSmoothingQuality: 'high' });
+    let b64 = canvas.toDataURL('image/jpeg', 0.80); 
+    
+    let item = tagsList[currentIndex];
+    let photoData = { type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 };
+    
     if (conn && conn.open) {
-        if(document.getElementById('cropScreen')) document.getElementById('cropScreen').style.display = 'none';
         if(document.getElementById('actionControls')) {
+            document.getElementById('actionControls').style.display = 'flex';
             document.getElementById('actionControls').innerHTML = `<div style="width:100%; text-align:center; color:white; padding:10px; font-weight:bold;">✅ Sending cropped photo...</div>`;
         }
-        
-        let canvas = cropper.getCroppedCanvas({ maxWidth: 1024, maxHeight: 1024, imageSmoothingEnabled: true, imageSmoothingQuality: 'high' });
-        let b64 = canvas.toDataURL('image/jpeg', 0.80); 
-        
-        let item = tagsList[currentIndex];
-        conn.send({ type: 'PHOTO_UPLOAD', reqId: item.reqId, jobId: item.jobId, tagId: item.tagId, photoType: currentPhotoMode, image: b64 });
-        
-        cropper.destroy(); cropper = null;
-        if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
-        
-        setTimeout(() => { showScreen('cameraScreen'); nextTag(); }, 500); 
+        conn.send(photoData);
     } else {
-        if(document.getElementById('disconnectOverlay')) document.getElementById('disconnectOverlay').style.display = 'flex';
+        offlinePhotoQueue.push(photoData);
     }
+    
+    cropper.destroy(); cropper = null;
+    if(document.getElementById('nativeCameraInput')) document.getElementById('nativeCameraInput').value = "";
+    
+    setTimeout(() => { showScreen('cameraScreen'); nextTag(); }, 500); 
 };
 
 window.cancelCrop = function() {
@@ -346,7 +430,6 @@ window.cancelCrop = function() {
 function nextTag() {
     if(autoNextTimeout) clearTimeout(autoNextTimeout);
     
-    // 🔥 FIX: Ab mode alternate nahi hoga, bas aage badhega (Batch Mode)
     currentIndex++;
     if(currentIndex >= tagsList.length) {
         alert(`🎉 All ${currentPhotoMode} Photos Completed!`);
@@ -358,6 +441,10 @@ function nextTag() {
 
 window.triggerRetake = function() {
     if(autoNextTimeout) clearTimeout(autoNextTimeout);
+    
+    let item = tagsList[currentIndex];
+    offlinePhotoQueue = offlinePhotoQueue.filter(p => !(p.tagId === item.tagId && p.photoType === currentPhotoMode));
+    
     updateUIForCurrentTag(); 
 };
 

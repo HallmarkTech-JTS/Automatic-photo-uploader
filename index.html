@@ -26,6 +26,10 @@
         #videoElement, #previewImage { width: 100%; max-height: 400px; object-fit: contain; background: #000; border-radius: 8px; margin-bottom: 15px; }
         #placeholderBox { width: 100%; height: 250px; background: #e2e8f0; border: 2px dashed #94a3b8; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: bold; margin-bottom: 15px; flex-direction: column;}
         .header-bar { background: #1e3a8a; color: white; padding: 15px; display: flex; justify-content: space-between; font-weight: bold; border-radius: 8px; margin-bottom: 15px;}
+        
+        /* 🔥 NAYA: Button ko highlight karne ka animation */
+        @keyframes pulseBtn { 0% { transform: scale(1); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }
+        .install-pulse { animation: pulseBtn 1.5s infinite; }
     </style>
 </head>
 <body>
@@ -37,6 +41,9 @@
             <input type="text" id="pcIdInput" placeholder="e.g. SHOP-ABC12">
             <button class="btn-blue" onclick="connectToPC()">Connect</button>
             <p id="statusMsg" style="font-weight: bold; color: #d97706;">Waiting to connect...</p>
+            
+            <!-- 🔥 SMART INSTALL BUTTON: Samne dikhega bina dhundhe -->
+            <button id="btnInstallApp" class="btn-green install-pulse" style="display: none; margin-top: 15px; background: #059669; border: 2px solid #047857; font-size: 18px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">⬇️ Install App on Phone</button>
         </div>
     </div>
 
@@ -70,15 +77,15 @@
             <p style="margin: 5px 0 15px 0; font-size: 14px; color: #64748b;">Job Card: <span id="currentJob">JOB-ID</span></p>
 
             <div style="position: relative; width: 100%; display: flex; justify-content: center; align-items: center;">
-    <video id="videoElement" autoplay playsinline style="display:none; width: 100%;"></video>
-    
-    <div id="targetOverlay" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:60vw; height:60vw; max-width:300px; max-height:300px; border:3px dashed #10b981; border-radius:12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); z-index:10; pointer-events:none; flex-direction: column; align-items: center; justify-content: center;">
-        <div style="position:absolute; top:-35px; color:#10b981; font-weight:bold; font-size:16px; text-shadow: 1px 1px 3px black; white-space:nowrap;">🔍 Place HUID Here</div>
-        <div style="width: 20px; height: 2px; background: rgba(16, 185, 129, 0.5); position: absolute;"></div>
-        <div style="width: 2px; height: 20px; background: rgba(16, 185, 129, 0.5); position: absolute;"></div>
-    </div>
-</div>
-<img id="previewImage" style="display:none;">
+                <video id="videoElement" autoplay playsinline style="display:none; width: 100%;"></video>
+                
+                <div id="targetOverlay" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:60vw; height:60vw; max-width:300px; max-height:300px; border:3px dashed #10b981; border-radius:12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); z-index:10; pointer-events:none; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="position:absolute; top:-35px; color:#10b981; font-weight:bold; font-size:16px; text-shadow: 1px 1px 3px black; white-space:nowrap;">🔍 Place HUID Here</div>
+                    <div style="width: 20px; height: 2px; background: rgba(16, 185, 129, 0.5); position: absolute;"></div>
+                    <div style="width: 2px; height: 20px; background: rgba(16, 185, 129, 0.5); position: absolute;"></div>
+                </div>
+            </div>
+            <img id="previewImage" style="display:none;">
             
             <div id="placeholderBox">
                 <span style="font-size: 30px; margin-bottom: 10px;">📷</span>
@@ -94,7 +101,7 @@
             </div>
 
             <div id="actionControls" class="flex-row" style="display:none;">
-                </div>
+            </div>
 
             <button class="btn-gray" style="margin-top: 15px;" onclick="goBackToMode()">🔙 Back to Menu</button>
         </div>
@@ -111,12 +118,20 @@
     </div>
 
     <script src="mobile.js"></script>
-<!-- 🔥 NAYA CODE: Connection Lost Alert Screen (Screen Blocker) -->
+
+    <!-- Connection Lost Alert Screen -->
     <div id="disconnectOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(220, 38, 38, 0.95); z-index:10000; flex-direction:column; align-items:center; justify-content:center; color:white; text-align:center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="font-size: 60px; margin-bottom: 15px;">⚠️</div>
         <h2 style="margin: 0 0 10px 0; font-size: 28px;">Connection Lost!</h2>
         <p style="font-size: 16px; margin-bottom: 30px; font-weight: bold; line-height: 1.5;">PC se connection toot gaya hai.<br>Kripya photo lene se pehle wapas connect karein taaki aapki mehnat waste na ho.</p>
         <button onclick="location.reload()" style="background: white; color: #dc2626; font-size: 18px; font-weight: bold; padding: 15px 30px; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); width: 80%;">🔄 Reconnect Now</button>
     </div>
+    
+    <!-- Service Worker for PWA (Zaruri Hai) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(() => console.log("SW Registered!"));
+        }
+    </script>
 </body>
 </html>
