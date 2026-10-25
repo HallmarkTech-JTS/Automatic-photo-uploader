@@ -194,7 +194,15 @@ function showScreen(screenId) {
     if(document.getElementById('cameraScreen')) document.getElementById('cameraScreen').style.display = 'none';
     if(document.getElementById('cropScreen')) document.getElementById('cropScreen').style.display = 'none';
     
-    if(document.getElementById(screenId)) document.getElementById(screenId).style.display = 'block';
+    let screen = document.getElementById(screenId);
+    if(screen) {
+        // 🔥 NAYA FIX: Crop screen ko 'flex' model par chalana taaki buttons screen se bahar na jayein
+        if (screenId === 'cropScreen') {
+            screen.style.display = 'flex';
+        } else {
+            screen.style.display = 'block';
+        }
+    }
 }
 
 window.setCameraMode = function(mode) {
